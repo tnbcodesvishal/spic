@@ -242,7 +242,7 @@ export async function sendTicketEmail(
     }
   }
   // 1.5. Try Google Apps Script Webhook for 100% fail-proof email delivery
-  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
   if (webhookUrl) {
     try {
       await fetch(webhookUrl, {
@@ -263,8 +263,8 @@ export async function sendTicketEmail(
   }
 
   // 2. Try Nodemailer SMTP if credentials exist
-  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER;
-  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS;
+  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
+  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
   if (smtpUser && smtpPass) {
     try {
       const transporter = nodemailer.createTransport(
@@ -476,7 +476,7 @@ export async function sendTeamTicketEmail(
   }
 
   // 1.5. Try Google Apps Script Webhook for 100% fail-proof team email delivery
-  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
   if (webhookUrl) {
     try {
       for (let i = 0; i < data.members.length; i++) {
@@ -501,8 +501,8 @@ export async function sendTeamTicketEmail(
   }
 
   // 2. Try Nodemailer SMTP (Gmail / Custom SMTP) if credentials exist
-  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER;
-  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS;
+  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
+  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
   if (smtpUser && smtpPass) {
     try {
       const transporter = nodemailer.createTransport(

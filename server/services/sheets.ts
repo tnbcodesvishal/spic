@@ -76,7 +76,7 @@ export async function appendAttendanceRow(data: {
   eventDate: string;
   eventVenue: string;
 }): Promise<{ success: boolean; error?: string }> {
-  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
   if (webhookUrl) {
     try {
       await fetch(webhookUrl, {
@@ -176,7 +176,7 @@ export async function appendRegistrationRow(data: {
   eventVenue: string;
   createdAt: string;
 }): Promise<{ success: boolean; error?: string }> {
-  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
   if (webhookUrl) {
     try {
       await fetch(webhookUrl, {
@@ -287,7 +287,7 @@ export async function appendTeamRegistrationRow(data: {
     }
   });
 
-  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
   if (webhookUrl) {
     try {
       for (const row of rowsToAppend) {
