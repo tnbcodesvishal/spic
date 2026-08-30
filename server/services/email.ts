@@ -221,30 +221,11 @@ export async function sendTicketEmail(
   const htmlContent = buildHtml(data);
   const subject = `Official Event Hall Ticket Pass \u2013 ${data.eventName}`;
   const WEBHOOK_URL = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
-  const isProduction = !!(process.env.RENDER || process.env.VERCEL || process.env.NODE_ENV === "production");
-
-  // On Render/Vercel: SMTP is blocked - use Google Apps Script Webhook as primary
-  if (isProduction) {
-    try {
-      console.log(`[email] Production mode - using Google Apps Script Webhook for ${data.to}`);
-      const res = await fetch(WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send_email", email: data.to, subject, emailHtml: htmlContent }),
-      });
-      const json = await res.json().catch(() => ({})) as any;
-      console.log(`[email] \u2705 Ticket sent via Google Webhook to ${data.to}`, json);
-      return { success: true };
-    } catch (webhookErr: any) {
-      console.error("[email] Webhook error on production:", webhookErr.message);
-      return { success: false, error: webhookErr.message };
-    }
-  }
-
-  // On localhost: use Gmail SMTP directly (fast, no quotas)
   const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
-  try {
+
+  // Try Gmail SMTP
+  const smtpPromise = (async () => {
     const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: smtpUser, pass: smtpPass } });
     await transporter.sendMail({
       from: `"SPIC Events" <${smtpUser}>`,
@@ -253,18 +234,31 @@ export async function sendTicketEmail(
       html: htmlContent,
     });
     console.log(`[email] \u2705 Ticket sent via Gmail SMTP to ${data.to}`);
-    // Also fire webhook in background
-    fetch(WEBHOOK_URL, {
+    return { success: true };
+  })();
+
+  // Try Google Apps Script Webhook simultaneously
+  const webhookPromise = (async () => {
+    const res = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "send_email", email: data.to, subject, emailHtml: htmlContent }),
-    }).catch(() => {});
+    });
+    const json = await res.json().catch(() => ({})) as any;
+    if (json.status !== "email_sent") throw new Error("Webhook did not confirm email_sent: " + JSON.stringify(json));
+    console.log(`[email] \u2705 Ticket sent via Google Webhook to ${data.to}`);
     return { success: true };
-  } catch (err: any) {
-    console.error("[email] Gmail SMTP error:", err.message);
-    return { success: false, error: err.message };
-  }
+  })();
+
+  // Run both in parallel - whichever succeeds first wins
+  const result = await Promise.any([smtpPromise, webhookPromise]).catch(async (aggErr) => {
+    console.error("[email] Both SMTP and Webhook failed:", aggErr.message);
+    return { success: false, error: "All email methods failed" };
+  });
+
+  return result;
 }
+
 
 export interface TeamTicketEmailData {
   teamName: string;
@@ -399,52 +393,47 @@ export async function sendTeamTicketEmail(
 ): Promise<{ success: boolean; error?: string }> {
   const subject = `Team Registration Confirmed \u2013 Your Personal QR Ticket for ${data.eventName}`;
   const WEBHOOK_URL = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
-  const isProduction = !!(process.env.RENDER || process.env.VERCEL || process.env.NODE_ENV === "production");
-
-  // On Render/Vercel: SMTP is blocked - use Google Apps Script Webhook as primary
-  if (isProduction) {
-    try {
-      for (let i = 0; i < data.members.length; i++) {
-        const m = data.members[i];
-        if (!m.email) continue;
-        console.log(`[email] Production mode - using Google Apps Script Webhook for team member ${m.email}`);
-        const res = await fetch(WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "send_email", email: m.email, subject, emailHtml: buildTeamHtml(data, i) }),
-        });
-        const json = await res.json().catch(() => ({})) as any;
-        console.log(`[email] \u2705 Team ticket sent via Google Webhook to ${m.email}`, json);
-      }
-      return { success: true };
-    } catch (webhookErr: any) {
-      console.error("[email] Team Webhook error on production:", webhookErr.message);
-      return { success: false, error: webhookErr.message };
-    }
-  }
-
-  // On localhost: use Gmail SMTP directly
   const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
-  try {
-    const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: smtpUser, pass: smtpPass } });
-    for (let i = 0; i < data.members.length; i++) {
-      const m = data.members[i];
-      if (!m.email) continue;
+
+  for (let i = 0; i < data.members.length; i++) {
+    const m = data.members[i];
+    if (!m.email) continue;
+    const memberHtml = buildTeamHtml(data, i);
+
+    // Try Gmail SMTP and Webhook in parallel
+    const smtpP = (async () => {
+      const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: smtpUser, pass: smtpPass } });
       await transporter.sendMail({
         from: `"SPIC Events" <${smtpUser}>`,
         to: m.email,
         subject,
-        html: buildTeamHtml(data, i),
+        html: memberHtml,
       });
       console.log(`[email] \u2705 Team ticket sent via Gmail SMTP to ${m.email}`);
-    }
-    return { success: true };
-  } catch (err: any) {
-    console.error("[email] Gmail SMTP team error:", err.message);
-    return { success: false, error: err.message };
+      return { success: true };
+    })();
+
+    const webhookP = (async () => {
+      const res = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send_email", email: m.email, subject, emailHtml: memberHtml }),
+      });
+      const json = await res.json().catch(() => ({})) as any;
+      if (json.status !== "email_sent") throw new Error("Webhook: " + JSON.stringify(json));
+      console.log(`[email] \u2705 Team ticket sent via Google Webhook to ${m.email}`);
+      return { success: true };
+    })();
+
+    await Promise.any([smtpP, webhookP]).catch((e) => {
+      console.error(`[email] Both methods failed for ${m.email}:`, e.message);
+    });
   }
+
+  return { success: true };
 }
+
 
 export async function sendContactEmail(
   data: ContactEmailData
