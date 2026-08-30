@@ -100,49 +100,44 @@ router.post("/", async (req: Request, res: Response) => {
   }
 
   // Log attendance to Google Sheet (non-blocking)
-  let sheetData: Parameters<typeof import("../services/sheets.js").appendAttendanceRow>[0];
-  
-  if (isTeam) {
-    const memberIndex = req.body.memberIndex;
-    const member = row.members[memberIndex];
-    sheetData = {
-      participantName: member.name,
-      participantEmail: member.email,
-      phone: member.phone,
-      rollNumber: member.rollNumber,
-      year: member.year,
-      eventName: row.eventName,
-      eventDate: row.eventDate,
-      eventVenue: row.eventVenue,
-    };
-  } else {
-    sheetData = {
-      participantName: row.participantName,
-      participantEmail: row.participantEmail,
-      phone: row.phone ?? null,
-      rollNumber: row.rollNumber ?? null,
-      year: row.year ?? null,
-      eventName: row.eventName,
-      eventDate: row.eventDate,
-      eventVenue: row.eventVenue,
-    };
-  }
+  const sheetData = isTeam
+    ? {
+        participantName: row.members[req.body.memberIndex].name,
+        participantEmail: row.members[req.body.memberIndex].email,
+        phone: row.members[req.body.memberIndex].phone ?? null,
+        rollNumber: row.members[req.body.memberIndex].rollNumber ?? null,
+        year: row.members[req.body.memberIndex].year ?? null,
+        eventName: row.eventName,
+        eventDate: row.eventDate,
+        eventVenue: row.eventVenue,
+      }
+    : {
+        participantName: row.participantName,
+        participantEmail: row.participantEmail,
+        phone: row.phone ?? null,
+        rollNumber: row.rollNumber ?? null,
+        year: row.year ?? null,
+        eventName: row.eventName,
+        eventDate: row.eventDate,
+        eventVenue: row.eventVenue,
+      };
 
-  import("../services/sheets.js").then(({ appendAttendanceRow }) => {
-    appendAttendanceRow(sheetData)
-      .then((result) => {
-        if (!result.success) {
-          console.error("[verify] Sheet append failed:", result.error);
-        }
-      })
-      .catch((err) => console.error("[verify] Sheet append error:", err));
-  });
+  appendAttendanceRow(sheetData)
+    .then((result) => {
+      if (!result.success) {
+        console.error("[verify] Sheet attendance update failed:", result.error);
+      } else {
+        console.log(`[verify] ✅ Sheet attendance marked as Present for ${sheetData.participantName}`);
+      }
+    })
+    .catch((err) => console.error("[verify] Sheet attendance error:", err));
 
   res.json({
     valid: true,
     participantName: participantNameResponse,
     participantEmail: participantEmailResponse,
     eventName: row.eventName,
+    attendance: "Present",
   });
 });
 

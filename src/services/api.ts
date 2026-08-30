@@ -39,6 +39,7 @@ export interface VerifyResult {
   participantName?: string;
   participantEmail?: string;
   eventName?: string;
+  attendance?: string;
   error?: string;
 }
 

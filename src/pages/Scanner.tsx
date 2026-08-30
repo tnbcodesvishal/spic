@@ -277,7 +277,11 @@ export default function Scanner() {
                             <h3 className="text-xl sm:text-3xl font-black text-white mb-2 sm:mb-4 tracking-tighter">ENTRY APPROVED</h3>
                             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-3 sm:p-5 border border-white/20 inline-block w-full max-w-[220px] sm:max-w-[320px]">
                               <p className="text-white text-base sm:text-xl font-bold uppercase tracking-widest truncate">{result.participantName}</p>
-                              <p className="text-white/60 text-[9px] sm:text-xs font-bold uppercase mt-1 tracking-tighter">{result.eventName}</p>
+                              <p className="text-white/70 text-[10px] sm:text-xs font-bold uppercase mt-1 tracking-tighter">{result.eventName}</p>
+                              <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[11px] sm:text-xs font-black tracking-wider uppercase">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block mr-0.5" />
+                                Attendance: Present
+                              </div>
                             </div>
                             <Button 
                               size="lg" 
