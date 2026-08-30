@@ -256,58 +256,37 @@ export async function appendTeamRegistrationRow(data: {
   pptLink: string;
 }): Promise<{ success: boolean; error?: string }> {
   const sheetIds = getSheetIds();
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
 
-  if (sheetIds.length === 0) {
-    return { success: false, error: "GOOGLE_SHEET_ID not configured." };
-  }
-
-  const rowsToAppend = data.members.map((member, index) => {
-    if (index === 0) {
-      return [
-        member.name || "",
-        member.branch || "",
-        member.year || "",
-        member.rollNumber || "",
-        member.phone || "",
-        data.teamName || "",
-        data.pptLink || "",
-        "Absent"
-      ];
-    } else {
-      return [
-        member.name || "",
-        member.branch || "",
-        member.year || "",
-        member.rollNumber || "",
-        member.phone || "",
-        "", // blank team name
-        "", // blank ppt link
-        "Absent" // Attendance
-      ];
-    }
+  // Format all 4 members with clear Leader / Member labels
+  const teamMemberRows = data.members.map((member, index) => {
+    const role = index === 0 ? "Leader" : `Member ${index + 1}`;
+    return {
+      name: `[${role}] ${member.name || ""}`,
+      branch: member.branch || "",
+      year: member.year || "",
+      rollNumber: member.rollNumber ? member.rollNumber.toString().trim() : "",
+      phone: member.phone || "",
+      teamName: `${data.teamName} (${role})`,
+      pptLink: data.pptLink || "",
+      attendance: "Absent",
+      email: member.email || "",
+    };
   });
 
-  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
   if (webhookUrl) {
     try {
-      for (const row of rowsToAppend) {
-        await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "register",
-            name: row[0],
-            branch: row[1],
-            year: row[2],
-            rollNumber: row[3],
-            phone: row[4],
-            teamName: row[5],
-            pptLink: row[6],
-            attendance: row[7],
-          }),
-        });
-      }
-      console.log(`[sheets] Appended team registration via Webhook for ${data.teamName}`);
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "register_team",
+          teamName: data.teamName,
+          members: teamMemberRows,
+          pptLink: data.pptLink,
+        }),
+      });
+      console.log(`[sheets] ✅ Appended team registration block for ${data.teamName}`);
       return { success: true };
     } catch (err: any) {
       console.error(`[sheets] Webhook failed for team ${data.teamName}:`, err.message);
@@ -315,32 +294,32 @@ export async function appendTeamRegistrationRow(data: {
   }
 
   const sheets = getSheetsClient();
-  if (!sheets) {
-    console.warn("[sheets] Google Sheets credentials missing. Set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY or GOOGLE_SHEET_WEBHOOK_URL in .env");
-    return { success: false, error: "Google Sheets credentials or Webhook URL not configured." };
-  }
+  if (sheets && sheetIds.length > 0) {
+    const rowsToAppend = [
+      ...teamMemberRows.map((r) => [
+        r.name,
+        r.branch,
+        r.year,
+        r.rollNumber,
+        r.phone,
+        r.teamName,
+        r.pptLink,
+        r.attendance,
+      ]),
+      // Clean separator divider between teams
+      ["──────────", "──────────", "──────────", "──────────", "──────────", `── End of ${data.teamName} ──`, "──────────", "──────────"],
+    ];
 
-  const results = await Promise.allSettled(sheetIds.map(async (sheetId) => {
-    try {
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: sheetId,
-        range: "Sheet1!A:H",
-        valueInputOption: "USER_ENTERED",
-        requestBody: {
-          values: rowsToAppend,
-        },
-      });
-      console.log(`[sheets] Appended team registration for ${data.teamName} in sheet ${sheetId}`);
-      return true;
-    } catch (err: any) {
-      console.error(`[sheets] Failed to append team registration in sheet ${sheetId}:`, err.message);
-      throw err;
-    }
-  }));
-
-  const failedCount = results.filter(r => r.status === "rejected").length;
-  if (failedCount === sheetIds.length) {
-    return { success: false, error: "Failed to append team registration in all sheets." };
+    await Promise.allSettled(
+      sheetIds.map((sheetId) =>
+        sheets.spreadsheets.values.append({
+          spreadsheetId: sheetId,
+          range: "Sheet1!A:H",
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values: rowsToAppend },
+        })
+      )
+    );
   }
 
   return { success: true };
