@@ -256,6 +256,7 @@ export async function sendTicketEmail(
         }),
       });
       console.log(`[email] ✅ Ticket sent via Google Webhook to ${data.to}`);
+      return { success: true };
     } catch (webhookErr: any) {
       console.error("[email] Webhook email send error:", webhookErr.message);
     }
@@ -493,6 +494,7 @@ export async function sendTeamTicketEmail(
         });
         console.log(`[email] ✅ Team ticket sent via Google Webhook to ${m.email}`);
       }
+      return { success: true };
     } catch (webhookErr: any) {
       console.error("[email] Webhook team email send error:", webhookErr.message);
     }
