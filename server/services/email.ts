@@ -240,6 +240,7 @@ export async function sendTicketEmail(
     } catch (err: any) {
       console.error("[email] Brevo SDK error:", err.message);
     }
+  }
   // 1.5. Try Google Apps Script Webhook for 100% fail-proof email delivery
   const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
   if (webhookUrl) {
