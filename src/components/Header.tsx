@@ -12,6 +12,7 @@ const navLinks = [
   { label: "Events", path: "/events" },
   { label: "Team", path: "/team" },
   { label: "Gallery", path: "/gallery" },
+  { label: "Admin Portal", path: "/admin" },
 ];
 
 const Header = () => {

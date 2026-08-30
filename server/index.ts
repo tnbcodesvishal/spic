@@ -3,10 +3,10 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
-import registrationRouter from "./routes/registration.js";
-import verificationRouter from "./routes/verification.js";
-import contactRouter from "./routes/contact.js";
-import uploadRouter from "./routes/upload.js";
+import registrationRouter from "./routes/registration";
+import verificationRouter from "./routes/verification";
+import contactRouter from "./routes/contact";
+import uploadRouter from "./routes/upload";
 
 // Render sets the PORT env var for web services
 const PORT = Number(process.env.PORT || process.env.API_PORT || 3001);

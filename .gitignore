@@ -25,7 +25,9 @@ lerna-debug.log*
 
 # Server secrets
 server/firebase-service-account.json
-data/*.db
+data/
+uploads/
+
 
 # Firebase
 .firebase/

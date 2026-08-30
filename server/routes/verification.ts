@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import crypto from "crypto";
-import { getDb, REGISTRATIONS } from "../db.js";
-import { appendAttendanceRow } from "../services/sheets.js";
+import { getDb, REGISTRATIONS } from "../db";
+import { appendAttendanceRow } from "../services/sheets";
 
 const router = Router();
 

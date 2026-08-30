@@ -1,10 +1,10 @@
 import { Router, type Request, type Response } from "express";
 import { v4 as uuidv4 } from "uuid";
-import { getDb, REGISTRATIONS } from "../db.js";
-import { generateToken } from "../services/token.js";
-import { generateQrDataUrl } from "../services/qr.js";
-import { sendTicketEmail } from "../services/email.js";
-import { appendRegistrationRow } from "../services/sheets.js";
+import { getDb, REGISTRATIONS } from "../db";
+import { generateToken } from "../services/token";
+import { generateQrDataUrl } from "../services/qr";
+import { sendTicketEmail } from "../services/email";
+import { appendRegistrationRow } from "../services/sheets";
 
 const router = Router();
 
@@ -21,7 +21,8 @@ router.post("/", async (req: Request, res: Response) => {
   const emailLower = (email as string).trim().toLowerCase();
   const db = getDb();
 
-  // Prevent duplicate registration
+  // Duplicate registration check disabled for testing mode
+  /*
   const duplicateCheck = await db
     .collection(REGISTRATIONS)
     .where("eventId", "==", eventId)
@@ -30,12 +31,12 @@ router.post("/", async (req: Request, res: Response) => {
     .get();
 
   if (!duplicateCheck.empty) {
-    // If getting 409, it means the registration already exists in Firebase
     res.status(409).json({ 
       error: "You are already registered for this event with this email. Please use a different email or check your existing ticket." 
     });
     return;
   }
+  */
 
   const id = uuidv4();
   const verificationToken = generateToken();
@@ -74,47 +75,61 @@ router.post("/", async (req: Request, res: Response) => {
 
   await db.collection(REGISTRATIONS).doc(id).set(registration);
 
-  // Save to Google Sheets (non-blocking)
-  appendRegistrationRow({
-    id,
-    participantName: registration.participantName,
-    participantEmail: registration.participantEmail,
-    phone: registration.phone,
-    rollNumber: registration.rollNumber,
-    year: registration.year,
-    branch: registration.branch,
-    eventName: registration.eventName,
-    eventDate: registration.eventDate,
-    eventVenue: registration.eventVenue,
-    createdAt: registration.createdAt,
-  }).catch((err) => {
-    console.error(`[register] Failed to append registration to sheets for ${id}:`, err);
-  });
-
-  // Send email (non-blocking)
-  sendTicketEmail({
-    to: emailLower,
-    participantName: name.trim(),
-    eventName,
-    eventDate,
-    eventVenue,
-    registrationId: id,
-    eventId,
-    verificationToken,
-  }).then(({ success, error }) => {
-    const status = success ? "sent" : "failed";
-    // Use set merge:true to be safer than update() to avoid crashes if doc is mid-creation
-    db.collection(REGISTRATIONS).doc(id).set({ emailStatus: status }, { merge: true })
-      .catch(dbErr => console.error(`[register] Firestore update failed for ${id}:`, dbErr.message));
-
-    if (!success) {
-      console.error(`[register] Email failed for ${id}:`, error);
+  // Save to Google Sheets
+  try {
+    const sheetRes = await appendRegistrationRow({
+      id,
+      participantName: registration.participantName,
+      participantEmail: registration.participantEmail,
+      phone: registration.phone,
+      rollNumber: registration.rollNumber,
+      year: registration.year,
+      branch: registration.branch,
+      eventName: registration.eventName,
+      eventDate: registration.eventDate,
+      eventVenue: registration.eventVenue,
+      createdAt: registration.createdAt,
+    });
+    if (!sheetRes.success) {
+      console.warn(`[register] Google Sheets warning for ${id}: ${sheetRes.error}`);
     }
-  });
+  } catch (err: any) {
+    console.error(`[register] Failed to append registration to sheets for ${id}:`, err.message);
+  }
+
+  // Send ticket email
+  let emailStatus: "sent" | "failed" = "pending";
+  try {
+    const emailRes = await sendTicketEmail({
+      to: emailLower,
+      participantName: name.trim(),
+      rollNumber: rollNumber.trim(),
+      branch: branch.trim(),
+      year: year.trim(),
+      phone: phone?.trim(),
+      eventName,
+      eventDate,
+      eventTime: req.body.eventTime || req.body.eventTiming || "10:00 AM onwards",
+      eventVenue,
+      registrationId: id,
+      eventId,
+      verificationToken,
+    });
+
+    emailStatus = emailRes.success ? "sent" : "failed";
+    await db.collection(REGISTRATIONS).doc(id).set({ emailStatus }, { merge: true });
+    if (!emailRes.success) {
+      console.error(`[register] Email send failed for ${id}:`, emailRes.error);
+    }
+  } catch (emailErr: any) {
+    console.error(`[register] Email exception for ${id}:`, emailErr.message);
+    emailStatus = "failed";
+  }
 
   res.status(201).json({
     id,
     ...registration,
+    emailStatus,
   });
 });
 
@@ -183,8 +198,13 @@ router.post("/:id/resend", async (req: Request, res: Response) => {
   const result = await sendTicketEmail({
     to: row.participantEmail,
     participantName: row.participantName,
+    rollNumber: row.rollNumber,
+    branch: row.branch,
+    year: row.year,
+    phone: row.phone,
     eventName: row.eventName,
     eventDate: row.eventDate,
+    eventTime: row.eventTime || row.eventTiming || "10:00 AM onwards",
     eventVenue: row.eventVenue,
     registrationId: doc.id,
     eventId: row.eventId,
@@ -211,8 +231,10 @@ router.post("/team", async (req: Request, res: Response) => {
   }
 
   const db = getDb();
+  const emailLower = members[0].email.trim().toLowerCase();
   
-  // Check for duplicate team name
+  // Team duplicate check disabled for testing mode
+  /*
   const duplicateNameCheck = await db
     .collection("team_registrations")
     .where("eventId", "==", eventId)
@@ -225,14 +247,6 @@ router.post("/team", async (req: Request, res: Response) => {
     return;
   }
 
-  // Check if member1 email is already registered as a lead
-  const emailLower = members[0].email.trim().toLowerCase();
-  const duplicateLeadCheck = await db
-    .collection("team_registrations")
-    .where("eventId", "==", eventId)
-    .where("members", "array-contains", { email: emailLower })
-    .get();
-  // Firestore array-contains with complex objects is tricky, but let's do a basic check by team Lead
   const duplicateLeadCheck2 = await db
     .collection("team_registrations")
     .where("eventId", "==", eventId)
@@ -244,6 +258,7 @@ router.post("/team", async (req: Request, res: Response) => {
     res.status(409).json({ error: "The Team Lead's email is already registered." });
     return;
   }
+  */
 
   const id = uuidv4();
 
@@ -297,7 +312,7 @@ router.post("/team", async (req: Request, res: Response) => {
   await db.collection("team_registrations").doc(id).set(registration);
 
   // Save to Google Sheets
-  import("../services/sheets.js").then(({ appendTeamRegistrationRow }) => {
+  import("../services/sheets").then(({ appendTeamRegistrationRow }) => {
       appendTeamRegistrationRow({
         teamName: registration.teamName,
         members: registration.members,
@@ -306,7 +321,7 @@ router.post("/team", async (req: Request, res: Response) => {
   });
 
   // Send team email
-  import("../services/email.js").then(({ sendTeamTicketEmail }) => {
+  import("../services/email").then(({ sendTeamTicketEmail }) => {
       sendTeamTicketEmail({
         teamName: registration.teamName,
         members: registration.members,

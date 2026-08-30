@@ -5,11 +5,17 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UPLOAD_DIR = path.resolve(__dirname, "../../uploads");
+const UPLOAD_DIR = process.env.VERCEL
+  ? "/tmp"
+  : path.resolve(__dirname, "../../uploads");
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  try {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  } catch (err: any) {
+    console.warn("[upload] Could not create UPLOAD_DIR:", err.message);
+  }
 }
 
 const router = Router();
@@ -44,13 +50,41 @@ router.post("/ppt", upload.single("file"), async (req: Request, res: Response) =
   }
 
   try {
-    // Build a public URL for the uploaded file
     const host = req.headers.host || "localhost:3001";
     const protocol = req.protocol || "http";
-    const publicUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+    let publicUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+
+    // Try uploading to Google Drive via Webhook if configured
+    const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+    if (webhookUrl) {
+      try {
+        const filePath = path.resolve(UPLOAD_DIR, req.file.filename);
+        const fileBuffer = fs.readFileSync(filePath);
+        const base64Data = fileBuffer.toString("base64");
+
+        const response = await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "upload_drive",
+            fileName: req.file.originalname,
+            mimeType: req.file.mimetype || "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            fileData: base64Data,
+          }),
+        });
+
+        const data = await response.json();
+        if (data && data.url) {
+          publicUrl = data.url;
+          console.log(`[upload] ✅ PPT uploaded directly to Google Drive: ${publicUrl}`);
+        }
+      } catch (driveErr: any) {
+        console.error("[upload] Google Drive webhook upload failed, using local URL:", driveErr.message);
+      }
+    }
 
     console.log(`[upload] PPT saved: ${req.file.filename} (${(req.file.size / 1024 / 1024).toFixed(2)} MB)`);
-    console.log(`[upload] Accessible at: ${publicUrl}`);
+    console.log(`[upload] Link returned: ${publicUrl}`);
 
     res.json({ url: publicUrl });
   } catch (err: any) {

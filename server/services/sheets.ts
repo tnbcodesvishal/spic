@@ -1,19 +1,38 @@
 import { google } from "googleapis";
-import { getServiceAccount } from "../db.js";
+import { getServiceAccount } from "../db";
 
-// Re-use the same Firebase service account for Google Sheets access
-const serviceAccount = getServiceAccount() as any;
-const privateKey = serviceAccount.private_key?.replace(/\\n/g, "\n");
+let sheetsAuthClient: any = null;
 
-const auth = new google.auth.GoogleAuth({
-  credentials: {
-    client_email: serviceAccount.client_email,
-    private_key: privateKey,
-  },
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-});
+function getSheetsClient() {
+  if (!sheetsAuthClient) {
+    let clientEmail: string | undefined;
+    let privateKey: string | undefined;
 
-const sheets = google.sheets({ version: "v4", auth });
+    const serviceAccount = getServiceAccount();
+    if (serviceAccount && (serviceAccount as any).client_email && (serviceAccount as any).private_key) {
+      clientEmail = (serviceAccount as any).client_email;
+      privateKey = (serviceAccount as any).private_key;
+    } else if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+      clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+      privateKey = process.env.GOOGLE_PRIVATE_KEY;
+    }
+
+    if (!clientEmail || !privateKey) {
+      return null;
+    }
+
+    const formattedPrivateKey = privateKey.replace(/\\n/g, "\n");
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: clientEmail,
+        private_key: formattedPrivateKey,
+      },
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    });
+    sheetsAuthClient = google.sheets({ version: "v4", auth });
+  }
+  return sheetsAuthClient;
+}
 
 /**
  * Collects all Google Sheet IDs from environment variables.
@@ -65,6 +84,11 @@ export async function appendAttendanceRow(data: {
 
   if (!data.rollNumber) {
     return { success: false, error: "Roll number required to find existing row." };
+  }
+
+  const sheets = getSheetsClient();
+  if (!sheets) {
+    return { success: false, error: "Service account credentials not configured." };
   }
 
   const results = await Promise.allSettled(sheetIds.map(async (sheetId) => {
@@ -130,10 +154,37 @@ export async function appendRegistrationRow(data: {
   eventVenue: string;
   createdAt: string;
 }): Promise<{ success: boolean; error?: string }> {
-  const sheetIds = getSheetIds();
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+  if (webhookUrl) {
+    try {
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "register",
+          name: data.participantName,
+          branch: data.branch ?? "",
+          year: data.year ?? "",
+          rollNumber: data.rollNumber ? data.rollNumber.toString().trim() : "",
+          phone: data.phone ?? "",
+          teamName: "",
+          pptLink: "",
+          attendance: "Absent",
+          email: data.participantEmail,
+          eventName: data.eventName,
+        }),
+      });
+      console.log(`[sheets] Appended via Webhook for ${data.participantName}`);
+      return { success: true };
+    } catch (err: any) {
+      console.error(`[sheets] Webhook failed for ${data.participantName}:`, err.message);
+    }
+  }
 
-  if (sheetIds.length === 0) {
-    return { success: false, error: "GOOGLE_SHEET_ID not configured." };
+  const sheets = getSheetsClient();
+  if (!sheets) {
+    console.warn("[sheets] Google Sheets API credentials missing. Set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY or GOOGLE_SHEET_WEBHOOK_URL in .env");
+    return { success: false, error: "Google Sheets credentials or Webhook URL not configured." };
   }
 
   const results = await Promise.allSettled(sheetIds.map(async (sheetId) => {
@@ -213,6 +264,39 @@ export async function appendTeamRegistrationRow(data: {
       ];
     }
   });
+
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+  if (webhookUrl) {
+    try {
+      for (const row of rowsToAppend) {
+        await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "register",
+            name: row[0],
+            branch: row[1],
+            year: row[2],
+            rollNumber: row[3],
+            phone: row[4],
+            teamName: row[5],
+            pptLink: row[6],
+            attendance: row[7],
+          }),
+        });
+      }
+      console.log(`[sheets] Appended team registration via Webhook for ${data.teamName}`);
+      return { success: true };
+    } catch (err: any) {
+      console.error(`[sheets] Webhook failed for team ${data.teamName}:`, err.message);
+    }
+  }
+
+  const sheets = getSheetsClient();
+  if (!sheets) {
+    console.warn("[sheets] Google Sheets credentials missing. Set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY or GOOGLE_SHEET_WEBHOOK_URL in .env");
+    return { success: false, error: "Google Sheets credentials or Webhook URL not configured." };
+  }
 
   const results = await Promise.allSettled(sheetIds.map(async (sheetId) => {
     try {

@@ -1,6 +1,4 @@
-const BASE = import.meta.env.DEV
-  ? "/api"                                    // Vite dev proxy → localhost:3001
-  : "https://spic-rkgit.onrender.com/api";    // Production → Render backend
+const BASE = import.meta.env.VITE_API_URL || "/api";
 
 export interface RegistrationPayload {
   eventId: string;
@@ -69,16 +67,25 @@ export interface TeamRegistrationResponse {
   message: string;
 }
 
-async function request<T>(
-  url: string,
-  options?: RequestInit
-): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
-    headers: { "Content-Type": "application/json" },
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const url = `${BASE}${endpoint}`;
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json", ...options.headers },
     ...options,
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Request failed");
+
+  const contentType = res.headers.get("content-type");
+  let data: any;
+  if (contentType && contentType.includes("application/json")) {
+    data = await res.json();
+  } else {
+    data = { error: await res.text() };
+  }
+
+  if (!res.ok) {
+    throw new Error(data.error || data.detail || `Request failed with status ${res.status}`);
+  }
+
   return data as T;
 }
 
@@ -97,21 +104,32 @@ export const api = {
     });
   },
 
+  registerPPT(formData: FormData) {
+    const url = `${BASE}/upload/ppt`;
+    return fetch(url, {
+      method: "POST",
+      body: formData,
+    }).then(async (res) => {
+      const contentType = res.headers.get("content-type");
+      let data: any;
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        data = { error: await res.text() };
+      }
+      if (!res.ok) {
+        throw new Error(data.error || data.detail || `Upload failed with status ${res.status}`);
+      }
+      return data as { url: string };
+    });
+  },
+
+  uploadPPT(formData: FormData) {
+    return this.registerPPT(formData);
+  },
+
   getRegistrations(email: string) {
-    return request<Registration[]>(
-      `/registrations?email=${encodeURIComponent(email)}`
-    );
-  },
-
-  getRegistration(id: string) {
-    return request<Registration>(`/registrations/${encodeURIComponent(id)}`);
-  },
-
-  resendEmail(id: string) {
-    return request<{ message: string }>(
-      `/registrations/${encodeURIComponent(id)}/resend`,
-      { method: "POST" }
-    );
+    return request<Registration[]>(`/registrations?email=${encodeURIComponent(email)}`);
   },
 
   verify(payload: VerifyPayload) {
@@ -121,16 +139,10 @@ export const api = {
     });
   },
 
-  registerPPT(formData: FormData) {
-    return fetch(`${BASE}/upload/ppt`, {
+  contact(payload: { name: string; email: string; concern: string }) {
+    return request<{ success: boolean; message: string }>("/contact", {
       method: "POST",
-      body: formData,
-      // Note: Don't set Content-Type header when sending FormData, 
-      // the browser will set it automatically with the boundary.
-    }).then(async (res) => {
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
-      return data as { url: string };
+      body: JSON.stringify(payload),
     });
   },
 };

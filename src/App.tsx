@@ -40,6 +40,7 @@ const App = () => (
               <Route path="/team" element={<Team />} />
               <Route path="/join" element={<JoinTeam />} />
               <Route path="/scan" element={<Scanner />} />
+              <Route path="/admin" element={<Scanner />} />
               <Route path="/register/:eventId" element={<Register />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

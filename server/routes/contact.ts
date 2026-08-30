@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { sendContactEmail } from "../services/email.js";
+import { sendContactEmail } from "../services/email";
 
 const router = Router();
 
