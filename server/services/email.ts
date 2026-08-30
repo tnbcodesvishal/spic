@@ -219,102 +219,60 @@ export async function sendTicketEmail(
   data: TicketEmailData
 ): Promise<{ success: boolean; error?: string }> {
   const htmlContent = buildHtml(data);
-  const subject = `Official Event Hall Ticket Pass – ${data.eventName}`;
+  const subject = `Official Event Hall Ticket Pass \u2013 ${data.eventName}`;
 
-  // 1. Try Brevo API if key exists
-  const brevoKey = process.env.BREVO_SMTP_KEY;
-  if (brevoKey) {
+  // PRIMARY: Gmail SMTP (confirmed always works)
+  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
+  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
+  try {
+    const transporter = nodemailer.createTransport(
+      process.env.SMTP_HOST
+        ? {
+            host: process.env.SMTP_HOST,
+            port: Number(process.env.SMTP_PORT || 587),
+            secure: process.env.SMTP_SECURE === "true",
+            auth: { user: smtpUser, pass: smtpPass },
+          }
+        : {
+            service: "gmail",
+            auth: { user: smtpUser, pass: smtpPass },
+          }
+    );
+    await transporter.sendMail({
+      from: `"SPIC Events" <${smtpUser}>`,
+      to: data.to,
+      subject,
+      html: htmlContent,
+    });
+    console.log(`[email] \u2705 Ticket sent via Gmail SMTP to ${data.to}`);
+
+    // SECONDARY: Fire Google Apps Script Webhook in parallel as backup (don't await)
+    const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
+    fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "send_email", email: data.to, subject, emailHtml: htmlContent }),
+    }).catch(() => {});
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("[email] Gmail SMTP error:", err.message);
+
+    // FALLBACK: If SMTP fails, try Google Webhook as last resort
     try {
-      const client = new BrevoClient({ apiKey: brevoKey });
-      const senderEmail = process.env.BREVO_SENDER_EMAIL || "spic@rkgit.edu.in";
-
-      await client.transactionalEmails.sendTransacEmail({
-        subject,
-        htmlContent,
-        sender: { name: "SPIC Events", email: senderEmail },
-        to: [{ email: data.to, name: data.participantName }],
-      });
-
-      console.log(`[email] ✅ Ticket sent via Brevo to ${data.to}`);
-      return { success: true };
-    } catch (err: any) {
-      console.error("[email] Brevo SDK error:", err.message);
-    }
-  }
-  // 1.5. Try Google Apps Script Webhook for 100% fail-proof email delivery
-  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
-  if (webhookUrl) {
-    try {
+      const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
       await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "send_email",
-          email: data.to,
-          subject: subject,
-          emailHtml: htmlContent,
-        }),
+        body: JSON.stringify({ action: "send_email", email: data.to, subject, emailHtml: htmlContent }),
       });
-      console.log(`[email] ✅ Ticket sent via Google Webhook to ${data.to}`);
+      console.log(`[email] \u2705 Ticket sent via Google Webhook fallback to ${data.to}`);
       return { success: true };
     } catch (webhookErr: any) {
-      console.error("[email] Webhook email send error:", webhookErr.message);
+      console.error("[email] Webhook fallback error:", webhookErr.message);
     }
+    return { success: false, error: err.message };
   }
-
-  // 2. Try Nodemailer SMTP if credentials exist
-  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
-  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
-  if (smtpUser && smtpPass) {
-    try {
-      const transporter = nodemailer.createTransport(
-        process.env.SMTP_HOST
-          ? {
-              host: process.env.SMTP_HOST,
-              port: Number(process.env.SMTP_PORT || 587),
-              secure: process.env.SMTP_SECURE === "true",
-              auth: { user: smtpUser, pass: smtpPass },
-            }
-          : {
-              service: "gmail",
-              auth: { user: smtpUser, pass: smtpPass },
-            }
-      );
-
-      await transporter.sendMail({
-        from: `"SPIC Events" <${smtpUser}>`,
-        to: data.to,
-        subject,
-        html: htmlContent,
-      });
-
-      console.log(`[email] ✅ Ticket sent via SMTP to ${data.to}`);
-      return { success: true };
-    } catch (err: any) {
-      console.error("[email] SMTP error:", err.message);
-    }
-  }
-
-  // 3. Fallback: Ethereal Email test account (generates live viewable email URL)
-  try {
-    const testTransporter = await getEtherealTransporter();
-    if (testTransporter) {
-      const info = await testTransporter.sendMail({
-        from: `"SPIC Events" <spic@rkgit.edu.in>`,
-        to: data.to,
-        subject,
-        html: htmlContent,
-      });
-      const previewUrl = nodemailer.getTestMessageUrl(info);
-      console.log(`[email] ✉️ Ticket Email Sent to ${data.to}! Live Email Preview Link: ${previewUrl}`);
-      return { success: true };
-    }
-  } catch (err: any) {
-    console.error("[email] Ethereal fallback error:", err.message);
-  }
-
-  console.log(`[email] ℹ️ Ticket email generated for ${data.to} (${data.participantName}, Roll: ${data.rollNumber ?? 'N/A'}).`);
-  return { success: true };
 }
 
 export interface TeamTicketEmailData {
@@ -448,120 +406,73 @@ function buildTeamHtml(data: TeamTicketEmailData, memberIndex: number): string {
 export async function sendTeamTicketEmail(
   data: TeamTicketEmailData
 ): Promise<{ success: boolean; error?: string }> {
-  const subject = `Team Registration Confirmed – Your Personal QR Ticket for ${data.eventName}`;
+  const subject = `Team Registration Confirmed \u2013 Your Personal QR Ticket for ${data.eventName}`;
 
-  // 1. Try Brevo API if key exists
-  const brevoKey = process.env.BREVO_SMTP_KEY;
-  if (brevoKey) {
-    try {
-      const client = new BrevoClient({ apiKey: brevoKey });
-      const senderEmail = process.env.BREVO_SENDER_EMAIL || "spic@rkgit.edu.in";
+  // PRIMARY: Gmail SMTP (confirmed always works)
+  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
+  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
+  try {
+    const transporter = nodemailer.createTransport(
+      process.env.SMTP_HOST
+        ? {
+            host: process.env.SMTP_HOST,
+            port: Number(process.env.SMTP_PORT || 587),
+            secure: process.env.SMTP_SECURE === "true",
+            auth: { user: smtpUser, pass: smtpPass },
+          }
+        : {
+            service: "gmail",
+            auth: { user: smtpUser, pass: smtpPass },
+          }
+    );
 
-      for (let i = 0; i < data.members.length; i++) {
-        const m = data.members[i];
-        if (!m.email) continue;
-        await client.transactionalEmails.sendTransacEmail({
-          subject,
-          htmlContent: buildTeamHtml(data, i),
-          sender: { name: "SPIC Events", email: senderEmail },
-          to: [{ email: m.email, name: m.name }],
-        });
-      }
-
-      console.log(`[email] ✅ Team tickets sent via Brevo for Team ${data.teamName}`);
-      return { success: true };
-    } catch (err: any) {
-      console.error("[email] Brevo SDK error for team:", err.message);
+    for (let i = 0; i < data.members.length; i++) {
+      const m = data.members[i];
+      if (!m.email) continue;
+      await transporter.sendMail({
+        from: `"SPIC Events" <${smtpUser}>`,
+        to: m.email,
+        subject,
+        html: buildTeamHtml(data, i),
+      });
+      console.log(`[email] \u2705 Team ticket sent via Gmail SMTP to ${m.email}`);
     }
-  }
 
-  // 1.5. Try Google Apps Script Webhook for 100% fail-proof team email delivery
-  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
-  if (webhookUrl) {
+    // SECONDARY: Fire Google Webhook in parallel as backup (don't await)
+    const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
+    for (let i = 0; i < data.members.length; i++) {
+      const m = data.members[i];
+      if (!m.email) continue;
+      fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send_email", email: m.email, subject, emailHtml: buildTeamHtml(data, i) }),
+      }).catch(() => {});
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("[email] Gmail SMTP team error:", err.message);
+
+    // FALLBACK: Webhook if SMTP fails
     try {
+      const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
       for (let i = 0; i < data.members.length; i++) {
         const m = data.members[i];
         if (!m.email) continue;
         await fetch(webhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "send_email",
-            email: m.email,
-            subject: subject,
-            emailHtml: buildTeamHtml(data, i),
-          }),
+          body: JSON.stringify({ action: "send_email", email: m.email, subject, emailHtml: buildTeamHtml(data, i) }),
         });
-        console.log(`[email] ✅ Team ticket sent via Google Webhook to ${m.email}`);
+        console.log(`[email] \u2705 Team ticket sent via Google Webhook fallback to ${m.email}`);
       }
       return { success: true };
     } catch (webhookErr: any) {
-      console.error("[email] Webhook team email send error:", webhookErr.message);
+      console.error("[email] Webhook team fallback error:", webhookErr.message);
     }
+    return { success: false, error: err.message };
   }
-
-  // 2. Try Nodemailer SMTP (Gmail / Custom SMTP) if credentials exist
-  const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
-  const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
-  if (smtpUser && smtpPass) {
-    try {
-      const transporter = nodemailer.createTransport(
-        process.env.SMTP_HOST
-          ? {
-              host: process.env.SMTP_HOST,
-              port: Number(process.env.SMTP_PORT || 587),
-              secure: process.env.SMTP_SECURE === "true",
-              auth: { user: smtpUser, pass: smtpPass },
-            }
-          : {
-              service: "gmail",
-              auth: { user: smtpUser, pass: smtpPass },
-            }
-      );
-
-      for (let i = 0; i < data.members.length; i++) {
-        const m = data.members[i];
-        if (!m.email) continue;
-        await transporter.sendMail({
-          from: `"SPIC Events" <${smtpUser}>`,
-          to: m.email,
-          subject,
-          html: buildTeamHtml(data, i),
-        });
-        console.log(`[email] ✅ Team member ticket sent via Gmail SMTP to ${m.email}`);
-      }
-
-      console.log(`[email] ✅ All team tickets sent via Gmail SMTP for Team ${data.teamName}`);
-      return { success: true };
-    } catch (err: any) {
-      console.error("[email] SMTP error for team:", err.message);
-    }
-  }
-
-  // 3. Fallback: Ethereal test account
-  try {
-    const testTransporter = await getEtherealTransporter();
-    if (testTransporter) {
-      for (let i = 0; i < data.members.length; i++) {
-        const m = data.members[i];
-        if (!m.email) continue;
-        const info = await testTransporter.sendMail({
-          from: `"SPIC Events" <spic@rkgit.edu.in>`,
-          to: m.email,
-          subject,
-          html: buildTeamHtml(data, i),
-        });
-        const previewUrl = nodemailer.getTestMessageUrl(info);
-        console.log(`[email] ✉️ Team Ticket Email Sent to ${m.email}! Preview: ${previewUrl}`);
-      }
-      return { success: true };
-    }
-  } catch (err: any) {
-    console.error("[email] Ethereal fallback error for team:", err.message);
-  }
-
-  console.log(`[email] ℹ️ Team tickets generated for Team ${data.teamName}`);
-  return { success: true };
 }
 
 export async function sendContactEmail(
