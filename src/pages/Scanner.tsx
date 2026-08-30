@@ -47,7 +47,13 @@ export default function Scanner() {
     setLoading(true);
 
     try {
-      const parsed = JSON.parse(data);
+      let parsed: any;
+      try {
+        parsed = typeof data === "string" ? JSON.parse(data.trim()) : data;
+      } catch {
+        throw new Error("Invalid QR code format. Please scan a valid SPIC ticket.");
+      }
+
       if (!parsed.registrationId || !parsed.eventId || !parsed.verificationToken) {
         throw new Error("Invalid QR code. Please scan a valid SPIC ticket.");
       }
@@ -55,7 +61,6 @@ export default function Scanner() {
       const res = await api.verify(parsed);
       setResult(res);
     } catch (err: any) {
-      // If it's a 409 (already used) from the API, it comes here as an error
       setError(err.message ?? "Verification failed.");
     } finally {
       setLoading(false);
