@@ -76,6 +76,27 @@ export async function appendAttendanceRow(data: {
   eventDate: string;
   eventVenue: string;
 }): Promise<{ success: boolean; error?: string }> {
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+  if (webhookUrl) {
+    try {
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "mark_attendance",
+          rollNumber: data.rollNumber ? data.rollNumber.toString().trim() : "",
+          name: data.participantName,
+          email: data.participantEmail,
+          attendance: "Present",
+        }),
+      });
+      console.log(`[sheets] ✅ Attendance marked as Present via Webhook for ${data.participantName}`);
+      return { success: true };
+    } catch (err: any) {
+      console.error(`[sheets] Attendance Webhook failed for ${data.participantName}:`, err.message);
+    }
+  }
+
   const sheetIds = getSheetIds();
 
   if (sheetIds.length === 0) {
@@ -88,6 +109,7 @@ export async function appendAttendanceRow(data: {
 
   const sheets = getSheetsClient();
   if (!sheets) {
+    console.warn("[sheets] Google Sheets API credentials missing for appendAttendanceRow");
     return { success: false, error: "Service account credentials not configured." };
   }
 
