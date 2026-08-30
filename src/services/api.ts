@@ -1,4 +1,5 @@
-const BASE = import.meta.env.VITE_API_URL || "/api";
+const BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "/api" : "https://spic-backend.onrender.com/api");
+
 
 export interface RegistrationPayload {
   eventId: string;
