@@ -247,11 +247,11 @@ export async function sendTicketEmail(
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS;
   if (smtpUser && smtpPass) {
     try {
+      const isGmail = !process.env.SMTP_HOST;
       const transporter = nodemailer.createTransport({
-        service: process.env.SMTP_HOST ? undefined : "gmail",
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: process.env.SMTP_SECURE === "true",
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: Number(process.env.SMTP_PORT || (isGmail ? 465 : 587)),
+        secure: isGmail || process.env.SMTP_SECURE === "true",
         auth: { user: smtpUser, pass: smtpPass },
       });
 
@@ -454,11 +454,11 @@ export async function sendTeamTicketEmail(
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS;
   if (smtpUser && smtpPass) {
     try {
+      const isGmail = !process.env.SMTP_HOST;
       const transporter = nodemailer.createTransport({
-        service: process.env.SMTP_HOST ? undefined : "gmail",
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: process.env.SMTP_SECURE === "true",
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: Number(process.env.SMTP_PORT || (isGmail ? 465 : 587)),
+        secure: isGmail || process.env.SMTP_SECURE === "true",
         auth: { user: smtpUser, pass: smtpPass },
       });
 
