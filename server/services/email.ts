@@ -240,6 +240,24 @@ export async function sendTicketEmail(
     } catch (err: any) {
       console.error("[email] Brevo SDK error:", err.message);
     }
+  // 1.5. Try Google Apps Script Webhook for 100% fail-proof email delivery
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+  if (webhookUrl) {
+    try {
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "send_email",
+          email: data.to,
+          subject: subject,
+          emailHtml: htmlContent,
+        }),
+      });
+      console.log(`[email] ✅ Ticket sent via Google Webhook to ${data.to}`);
+    } catch (webhookErr: any) {
+      console.error("[email] Webhook email send error:", webhookErr.message);
+    }
   }
 
   // 2. Try Nodemailer SMTP if credentials exist
@@ -452,6 +470,30 @@ export async function sendTeamTicketEmail(
       return { success: true };
     } catch (err: any) {
       console.error("[email] Brevo SDK error for team:", err.message);
+    }
+  }
+
+  // 1.5. Try Google Apps Script Webhook for 100% fail-proof team email delivery
+  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+  if (webhookUrl) {
+    try {
+      for (let i = 0; i < data.members.length; i++) {
+        const m = data.members[i];
+        if (!m.email) continue;
+        await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "send_email",
+            email: m.email,
+            subject: subject,
+            emailHtml: buildTeamHtml(data, i),
+          }),
+        });
+        console.log(`[email] ✅ Team ticket sent via Google Webhook to ${m.email}`);
+      }
+    } catch (webhookErr: any) {
+      console.error("[email] Webhook team email send error:", webhookErr.message);
     }
   }
 
