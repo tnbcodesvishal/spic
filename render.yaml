@@ -4,11 +4,9 @@ services:
     env: node
     region: singapore
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install --include=dev
     startCommand: npm run start
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: GMAIL_USER
         value: mr.vishalsingh987@gmail.com
       - key: GMAIL_PASS
