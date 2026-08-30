@@ -247,13 +247,19 @@ export async function sendTicketEmail(
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS;
   if (smtpUser && smtpPass) {
     try {
-      const isGmail = !process.env.SMTP_HOST;
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || "smtp.gmail.com",
-        port: Number(process.env.SMTP_PORT || (isGmail ? 465 : 587)),
-        secure: isGmail || process.env.SMTP_SECURE === "true",
-        auth: { user: smtpUser, pass: smtpPass },
-      });
+      const transporter = nodemailer.createTransport(
+        process.env.SMTP_HOST
+          ? {
+              host: process.env.SMTP_HOST,
+              port: Number(process.env.SMTP_PORT || 587),
+              secure: process.env.SMTP_SECURE === "true",
+              auth: { user: smtpUser, pass: smtpPass },
+            }
+          : {
+              service: "gmail",
+              auth: { user: smtpUser, pass: smtpPass },
+            }
+      );
 
       await transporter.sendMail({
         from: `"SPIC Events" <${smtpUser}>`,
@@ -454,13 +460,19 @@ export async function sendTeamTicketEmail(
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS;
   if (smtpUser && smtpPass) {
     try {
-      const isGmail = !process.env.SMTP_HOST;
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || "smtp.gmail.com",
-        port: Number(process.env.SMTP_PORT || (isGmail ? 465 : 587)),
-        secure: isGmail || process.env.SMTP_SECURE === "true",
-        auth: { user: smtpUser, pass: smtpPass },
-      });
+      const transporter = nodemailer.createTransport(
+        process.env.SMTP_HOST
+          ? {
+              host: process.env.SMTP_HOST,
+              port: Number(process.env.SMTP_PORT || 587),
+              secure: process.env.SMTP_SECURE === "true",
+              auth: { user: smtpUser, pass: smtpPass },
+            }
+          : {
+              service: "gmail",
+              auth: { user: smtpUser, pass: smtpPass },
+            }
+      );
 
       for (let i = 0; i < data.members.length; i++) {
         const m = data.members[i];
