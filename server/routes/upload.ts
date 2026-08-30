@@ -54,11 +54,12 @@ router.post("/ppt", upload.single("file"), async (req: Request, res: Response) =
     const protocol = req.protocol || "http";
     let publicUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
 
-    // Try uploading to Google Drive via Webhook if configured
-    const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
+    // Upload to Google Drive via Webhook
+    const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
+    const filePath = path.resolve(UPLOAD_DIR, req.file.filename);
+
     if (webhookUrl) {
       try {
-        const filePath = path.resolve(UPLOAD_DIR, req.file.filename);
         const fileBuffer = fs.readFileSync(filePath);
         const base64Data = fileBuffer.toString("base64");
 
@@ -73,10 +74,14 @@ router.post("/ppt", upload.single("file"), async (req: Request, res: Response) =
           }),
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         if (data && data.url) {
           publicUrl = data.url;
           console.log(`[upload] ✅ PPT uploaded directly to Google Drive: ${publicUrl}`);
+          // Remove local file to save Render disk space
+          try {
+            fs.unlinkSync(filePath);
+          } catch {}
         }
       } catch (driveErr: any) {
         console.error("[upload] Google Drive webhook upload failed, using local URL:", driveErr.message);
