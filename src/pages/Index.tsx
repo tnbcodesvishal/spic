@@ -20,13 +20,13 @@ import {
   Network,
 } from "lucide-react";
 
-const targetDate = new Date("2026-04-25T09:00:00").getTime();
+const DEFAULT_TARGET_DATE = new Date("2026-04-25T09:00:00").getTime();
 
-function useCountdown() {
+function useCountdown(targetTime: number) {
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   useEffect(() => {
     const tick = () => {
-      const diff = Math.max(0, targetDate - Date.now());
+      const diff = Math.max(0, targetTime - Date.now());
       setTimeLeft({
         days: Math.floor(diff / 86400000),
         hours: Math.floor((diff % 86400000) / 3600000),
@@ -37,7 +37,7 @@ function useCountdown() {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [targetTime]);
   return timeLeft;
 }
 
@@ -71,8 +71,48 @@ const stats = [
   { label: "Industry Collaborations", value: 5, suffix: "+", sub: "MoUs, mentors & partners" },
 ];
 
+import { getFirebaseEvents } from "@/services/firebaseEvents";
+
+const formatEventDate = (dateStr: string): string => {
+  if (!dateStr) return "";
+  const cleanStr = dateStr.includes("-") ? dateStr.replace(/-/g, "/") : dateStr;
+  const parsed = new Date(cleanStr);
+  if (!isNaN(parsed.getTime()) && /^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(dateStr.trim())) {
+    return parsed.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  }
+  return dateStr;
+};
+
 const Index = () => {
-  const countdown = useCountdown();
+  const [featuredEvent, setFeaturedEvent] = useState(upcomingEvents[0]);
+
+  useEffect(() => {
+    let isMounted = true;
+    getFirebaseEvents()
+      .then((data) => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          // Prioritize latest open event for registration
+          const openEvents = data.filter((e) => e.status === "open");
+          const next =
+            openEvents[0] ||
+            data.find((e) => e.featured && e.status !== "ended") ||
+            data.find((e) => e.status === "upcoming") ||
+            data[0];
+          if (next) setFeaturedEvent(next);
+        }
+      })
+      .catch((err) => console.warn("[Index] Fallback to local featured event:", err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const targetTime = featuredEvent?.date && !isNaN(new Date(featuredEvent.date.includes("-") ? featuredEvent.date.replace(/-/g, "/") : featuredEvent.date).getTime())
+    ? new Date(featuredEvent.date.includes("-") ? featuredEvent.date.replace(/-/g, "/") : featuredEvent.date).getTime()
+    : DEFAULT_TARGET_DATE;
+
+  const countdown = useCountdown(targetTime);
 
 
   return (
@@ -100,9 +140,17 @@ const Index = () => {
             from first prototypes to stage-ready pitches.
           </p>
           <div className="flex flex-wrap gap-3 justify-center mb-8">
-            <Button asChild size="lg">
-              <Link to="/events">Explore Events</Link>
-            </Button>
+            {featuredEvent && featuredEvent.status === "open" ? (
+              <Button asChild size="lg" className="font-bold shadow-lg shadow-primary/25">
+                <Link to={`/register/${featuredEvent.id}`}>
+                  Register Now for {featuredEvent.name}
+                </Link>
+              </Button>
+            ) : (
+              <Button asChild size="lg">
+                <Link to="/events">Explore Events</Link>
+              </Button>
+            )}
             <Button asChild size="lg" variant="outline">
               <Link to="/join">Join the Community</Link>
             </Button>
@@ -126,7 +174,7 @@ const Index = () => {
         </AnimatedSection>
 
         <a
-          href="#impact"
+          href="#countdown"
           className="absolute bottom-8 text-muted-foreground hover:text-foreground transition-colors"
           aria-label="Scroll down"
         >
@@ -135,35 +183,52 @@ const Index = () => {
       </section>
 
       {/* Countdown / Next event highlight */}
-      <section id="countdown" className="section-padding-sm border-y border-border/40">
+      <section id="countdown" className="section-padding-sm border-y border-border/40 bg-muted/10">
         <div className="container mx-auto px-4 text-center">
           <AnimatedSection>
-            <p className="text-xs font-semibold tracking-widest uppercase text-accent mb-2">Next Big Event</p>
-            <h2 className="font-display text-2xl sm:text-3xl font-bold mb-2">Ideation '26</h2>
-            <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm mb-10">
-              <Calendar className="h-3.5 w-3.5" /> 25 & 27 April 2026
-              <span className="mx-1 text-border">&bull;</span>
-              <MapPin className="h-3.5 w-3.5" /> Seminal Hall , D Block
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-xs font-bold mb-3 border border-emerald-500/20">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              LATEST EVENT OPEN FOR REGISTRATION
+            </div>
+            <h2 className="font-display text-2xl sm:text-4xl font-bold mb-2">{featuredEvent.name}</h2>
+            <div className="flex items-center justify-center gap-3 text-muted-foreground text-xs sm:text-sm mb-8 flex-wrap">
+              <span className="flex items-center gap-1">
+                <Calendar className="h-4 w-4 text-primary" /> {formatEventDate(featuredEvent.date)}
+              </span>
+              {featuredEvent.time && (
+                <>
+                  <span className="text-border">&bull;</span>
+                  <span>{featuredEvent.time}</span>
+                </>
+              )}
+              <span className="text-border">&bull;</span>
+              <span className="flex items-center gap-1">
+                <MapPin className="h-4 w-4 text-primary" /> {featuredEvent.venue}
+              </span>
             </div>
           </AnimatedSection>
+
           <AnimatedSection delay={0.1}>
-            <div className="flex justify-center gap-4 sm:gap-8 mb-10">
+            <div className="flex justify-center gap-4 sm:gap-8 mb-8">
               {[
                 { val: countdown.days, label: "Days" },
                 { val: countdown.hours, label: "Hours" },
                 { val: countdown.minutes, label: "Min" },
                 { val: countdown.seconds, label: "Sec" },
               ].map(({ val, label }) => (
-                <div key={label} className="flex flex-col items-center min-w-[60px]">
+                <div key={label} className="flex flex-col items-center min-w-[60px] sm:min-w-[80px] p-3 rounded-2xl bg-card border border-border/60 shadow-sm">
                   <span className="font-display text-3xl sm:text-4xl font-bold tabular-nums text-foreground">
                     {String(val).padStart(2, "0")}
                   </span>
-                  <span className="text-[11px] text-muted-foreground mt-1.5 uppercase tracking-wide">{label}</span>
+                  <span className="text-[11px] text-muted-foreground mt-1 uppercase tracking-wide font-medium">{label}</span>
                 </div>
               ))}
             </div>
-            <Button asChild size="lg">
-              <Link to="/register/ideation-2">Register Now</Link>
+
+            <Button asChild size="lg" className="font-bold text-base px-8 shadow-xl shadow-primary/25">
+              <Link to={featuredEvent.status === "open" ? `/register/${featuredEvent.id}` : "/events"}>
+                {featuredEvent.status === "open" ? `Register Now for ${featuredEvent.name}` : "View All Events"}
+              </Link>
             </Button>
           </AnimatedSection>
         </div>

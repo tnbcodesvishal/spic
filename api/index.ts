@@ -5,6 +5,8 @@ import registrationRouter from "../server/routes/registration";
 import verificationRouter from "../server/routes/verification";
 import contactRouter from "../server/routes/contact";
 import uploadRouter from "../server/routes/upload";
+import eventsRouter from "../server/routes/events";
+import adminRouter from "../server/routes/admin";
 
 const app = express();
 
@@ -12,6 +14,8 @@ app.use(cors({ origin: true }));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "110mb" }));
 
+app.use("/api/events", eventsRouter);
+app.use("/api/admin", adminRouter);
 app.use("/api/registrations", registrationRouter);
 app.use("/api/verify", verificationRouter);
 app.use("/api/contact", contactRouter);

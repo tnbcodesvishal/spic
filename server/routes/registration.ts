@@ -3,8 +3,8 @@ import { v4 as uuidv4 } from "uuid";
 import { getDb, REGISTRATIONS } from "../db";
 import { generateToken } from "../services/token";
 import { generateQrDataUrl } from "../services/qr";
-import { sendTicketEmail } from "../services/email";
-import { appendRegistrationRow } from "../services/sheets";
+import { sendTicketEmail, sendTeamTicketEmail } from "../services/email";
+import { appendRegistrationRow, appendTeamRegistrationRow } from "../services/sheets";
 
 const router = Router();
 
@@ -225,12 +225,33 @@ router.post("/:id/resend", async (req: Request, res: Response) => {
 router.post("/team", async (req: Request, res: Response) => {
   const { eventId, eventName, eventDate, eventVenue, teamName, members, pptLink } = req.body;
 
-  if (!eventId || !eventName || !teamName || !members || members.length < 1 || members.length > 4 || !pptLink) {
-    res.status(400).json({ error: "Missing required fields. Team registrations require at least 1 member (Lead) and a PPT link." });
+  const db = getDb();
+  let requirePpt = false;
+  let minTeamSize = 1;
+  let maxTeamSize = 10;
+
+  try {
+    const eventDoc = await db.collection("events").doc(eventId).get();
+    if (eventDoc.exists) {
+      const ev = eventDoc.data();
+      if (ev.requirePpt === true) requirePpt = true;
+      if (typeof ev.minTeamSize === "number") minTeamSize = ev.minTeamSize;
+      if (typeof ev.maxTeamSize === "number") maxTeamSize = ev.maxTeamSize;
+    }
+  } catch (err) {
+    console.warn("[registerTeam] Event lookup fallback:", err);
+  }
+
+  if (!eventId || !eventName || !teamName || !members || members.length < minTeamSize || members.length > maxTeamSize) {
+    res.status(400).json({ error: `Team registrations for this event require between ${minTeamSize} and ${maxTeamSize} members.` });
     return;
   }
 
-  const db = getDb();
+  if (requirePpt && !pptLink) {
+    res.status(400).json({ error: "Presentation file / PPT link is required for this event." });
+    return;
+  }
+
   const emailLower = members[0].email.trim().toLowerCase();
   
   // Team duplicate check disabled for testing mode
@@ -303,7 +324,7 @@ router.post("/team", async (req: Request, res: Response) => {
     teamName: teamName.trim(),
     leadEmail: emailLower,
     members: membersWithTokens,
-    pptLink,
+    pptLink: pptLink || "",
     emailStatus: "pending",
     createdAt: new Date().toISOString(),
     isTeam: true
@@ -312,29 +333,28 @@ router.post("/team", async (req: Request, res: Response) => {
   await db.collection("team_registrations").doc(id).set(registration);
 
   // Save to Google Sheets
-  import("../services/sheets").then(({ appendTeamRegistrationRow }) => {
-      appendTeamRegistrationRow({
-        teamName: registration.teamName,
-        members: registration.members,
-        pptLink: registration.pptLink
-      }).catch(console.error);
-  });
+  appendTeamRegistrationRow({
+    teamName: registration.teamName,
+    members: registration.members,
+    pptLink: registration.pptLink
+  }).catch((err) => console.warn("[registerTeam] Sheets error:", err));
 
   // Send team email
-  import("../services/email").then(({ sendTeamTicketEmail }) => {
-      sendTeamTicketEmail({
-        teamName: registration.teamName,
-        members: registration.members,
-        eventName: registration.eventName,
-        eventDate: registration.eventDate,
-        eventVenue: registration.eventVenue,
-        registrationId: id,
-        eventId: registration.eventId
-      }).then(({ success }) => {
-        const status = success ? "sent" : "failed";
-        db.collection("team_registrations").doc(id).set({ emailStatus: status }, { merge: true }).catch(console.error);
-      });
-  });
+  try {
+    const emailRes = await sendTeamTicketEmail({
+      teamName: registration.teamName,
+      members: registration.members,
+      eventName: registration.eventName,
+      eventDate: registration.eventDate,
+      eventVenue: registration.eventVenue,
+      registrationId: id,
+      eventId: registration.eventId
+    });
+    const status = emailRes.success ? "sent" : "failed";
+    await db.collection("team_registrations").doc(id).set({ emailStatus: status }, { merge: true });
+  } catch (emailErr: any) {
+    console.error(`[registerTeam] Email exception for ${id}:`, emailErr.message);
+  }
 
   res.status(201).json({
     id,

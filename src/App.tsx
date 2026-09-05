@@ -15,6 +15,7 @@ import Events from "./pages/Events";
 import Team from "./pages/Team";
 import JoinTeam from "./pages/JoinTeam";
 import Scanner from "./pages/Scanner";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 import Gallery from "./pages/Gallery";
 import Register from "./pages/Register";
@@ -40,7 +41,7 @@ const App = () => (
               <Route path="/team" element={<Team />} />
               <Route path="/join" element={<JoinTeam />} />
               <Route path="/scan" element={<Scanner />} />
-              <Route path="/admin" element={<Scanner />} />
+              <Route path="/admin" element={<Admin />} />
               <Route path="/register/:eventId" element={<Register />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

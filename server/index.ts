@@ -7,6 +7,8 @@ import registrationRouter from "./routes/registration";
 import verificationRouter from "./routes/verification";
 import contactRouter from "./routes/contact";
 import uploadRouter from "./routes/upload";
+import eventsRouter from "./routes/events";
+import adminRouter from "./routes/admin";
 
 // Render sets the PORT env var for web services
 const PORT = Number(process.env.PORT || process.env.API_PORT || 3001);
@@ -21,6 +23,8 @@ app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "110mb" }));
 
 // ─── API routes ──────────────────────────────────────────────────────
+app.use("/api/events", eventsRouter);
+app.use("/api/admin", adminRouter);
 app.use("/api/registrations", registrationRouter);
 app.use("/api/verify", verificationRouter);
 app.use("/api/contact", contactRouter);

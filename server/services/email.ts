@@ -220,43 +220,58 @@ export async function sendTicketEmail(
 ): Promise<{ success: boolean; error?: string }> {
   const htmlContent = buildHtml(data);
   const subject = `Official Event Hall Ticket Pass \u2013 ${data.eventName}`;
-  const WEBHOOK_URL = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
+  const WEBHOOK_URL =
+    process.env.GOOGLE_SHEET_WEBHOOK_URL ||
+    "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
   const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
 
-  // Try Gmail SMTP
-  const smtpPromise = (async () => {
-    const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: smtpUser, pass: smtpPass } });
+  // 1. Try Gmail SMTP Primary
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: smtpUser, pass: smtpPass },
+    });
+
     await transporter.sendMail({
       from: `"SPIC Events" <${smtpUser}>`,
       to: data.to,
       subject,
       html: htmlContent,
     });
+
     console.log(`[email] \u2705 Ticket sent via Gmail SMTP to ${data.to}`);
     return { success: true };
-  })();
+  } catch (smtpErr: any) {
+    console.warn(`[email] Gmail SMTP attempt failed for ${data.to}:`, smtpErr.message);
+  }
 
-  // Try Google Apps Script Webhook simultaneously
-  const webhookPromise = (async () => {
+  // 2. Fallback: Google Apps Script Webhook
+  try {
     const res = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "send_email", email: data.to, subject, emailHtml: htmlContent }),
+      body: JSON.stringify({
+        action: "send_email",
+        email: data.to,
+        subject,
+        emailHtml: htmlContent,
+      }),
+      redirect: "follow",
     });
-    const json = await res.json().catch(() => ({})) as any;
-    if (json.status !== "email_sent") throw new Error("Webhook did not confirm email_sent: " + JSON.stringify(json));
-    console.log(`[email] \u2705 Ticket sent via Google Webhook to ${data.to}`);
-    return { success: true };
-  })();
 
-  // Run both in parallel - whichever succeeds first wins
-  const result = await Promise.any([smtpPromise, webhookPromise]).catch(async (aggErr) => {
-    console.error("[email] Both SMTP and Webhook failed:", aggErr.message);
-    return { success: false, error: "All email methods failed" };
-  });
+    const text = await res.text();
+    if (res.ok && (text.includes("email_sent") || text.includes("success"))) {
+      console.log(`[email] \u2705 Ticket sent via Google Webhook fallback to ${data.to}`);
+      return { success: true };
+    } else {
+      console.warn(`[email] Google Webhook response for ${data.to}:`, text.slice(0, 200));
+    }
+  } catch (webhookErr: any) {
+    console.warn(`[email] Google Webhook fallback failed for ${data.to}:`, webhookErr.message);
+  }
 
-  return result;
+  return { success: false, error: "Both Gmail SMTP and Webhook delivery failed" };
 }
 
 
@@ -392,18 +407,27 @@ export async function sendTeamTicketEmail(
   data: TeamTicketEmailData
 ): Promise<{ success: boolean; error?: string }> {
   const subject = `Team Registration Confirmed \u2013 Your Personal QR Ticket for ${data.eventName}`;
-  const WEBHOOK_URL = process.env.GOOGLE_SHEET_WEBHOOK_URL || "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
+  const WEBHOOK_URL =
+    process.env.GOOGLE_SHEET_WEBHOOK_URL ||
+    "https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec";
   const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
+
+  let sentCount = 0;
 
   for (let i = 0; i < data.members.length; i++) {
     const m = data.members[i];
     if (!m.email) continue;
     const memberHtml = buildTeamHtml(data, i);
 
-    // Try Gmail SMTP and Webhook in parallel
-    const smtpP = (async () => {
-      const transporter = nodemailer.createTransport({ service: "gmail", auth: { user: smtpUser, pass: smtpPass } });
+    let memberSent = false;
+
+    // 1. Try Gmail SMTP
+    try {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: smtpUser, pass: smtpPass },
+      });
       await transporter.sendMail({
         from: `"SPIC Events" <${smtpUser}>`,
         to: m.email,
@@ -411,27 +435,39 @@ export async function sendTeamTicketEmail(
         html: memberHtml,
       });
       console.log(`[email] \u2705 Team ticket sent via Gmail SMTP to ${m.email}`);
-      return { success: true };
-    })();
+      memberSent = true;
+    } catch (smtpErr: any) {
+      console.warn(`[email] Gmail SMTP failed for team member ${m.email}:`, smtpErr.message);
+    }
 
-    const webhookP = (async () => {
-      const res = await fetch(WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send_email", email: m.email, subject, emailHtml: memberHtml }),
-      });
-      const json = await res.json().catch(() => ({})) as any;
-      if (json.status !== "email_sent") throw new Error("Webhook: " + JSON.stringify(json));
-      console.log(`[email] \u2705 Team ticket sent via Google Webhook to ${m.email}`);
-      return { success: true };
-    })();
+    // 2. Fallback: Google Webhook
+    if (!memberSent) {
+      try {
+        const res = await fetch(WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "send_email",
+            email: m.email,
+            subject,
+            emailHtml: memberHtml,
+          }),
+          redirect: "follow",
+        });
+        const text = await res.text();
+        if (res.ok && (text.includes("email_sent") || text.includes("success"))) {
+          console.log(`[email] \u2705 Team ticket sent via Google Webhook fallback to ${m.email}`);
+          memberSent = true;
+        }
+      } catch (webhookErr: any) {
+        console.warn(`[email] Webhook fallback failed for team member ${m.email}:`, webhookErr.message);
+      }
+    }
 
-    await Promise.any([smtpP, webhookP]).catch((e) => {
-      console.error(`[email] Both methods failed for ${m.email}:`, e.message);
-    });
+    if (memberSent) sentCount++;
   }
 
-  return { success: true };
+  return { success: sentCount > 0 };
 }
 
 

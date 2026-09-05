@@ -1,5 +1,6 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getStorage } from "firebase/storage";
+import { initializeFirestore, getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyATme5QeszOAyS456s6AINGDvZIfspEuY0",
@@ -10,5 +11,16 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:33775658852:web:52fc59ddd366b2dccc3c71",
 };
 
-export const app = initializeApp(firebaseConfig);
+export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const storage = getStorage(app);
+
+let firestoreDb: ReturnType<typeof getFirestore>;
+try {
+  firestoreDb = initializeFirestore(app, {
+    ignoreUndefinedProperties: true,
+  });
+} catch {
+  firestoreDb = getFirestore(app);
+}
+
+export const db = firestoreDb;

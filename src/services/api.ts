@@ -147,4 +147,71 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+
+  // ─── Dynamic Events ──────────────────────────────────────────────
+  getEvents() {
+    return request<import("@/data/events").Event[]>("/events");
+  },
+
+  getEvent(id: string) {
+    return request<import("@/data/events").Event>(`/events/${id}`);
+  },
+
+  createEvent(payload: Partial<import("@/data/events").Event>, pin: string) {
+    return request<import("@/data/events").Event>("/events", {
+      method: "POST",
+      headers: { "x-admin-pin": pin },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateEvent(id: string, payload: Partial<import("@/data/events").Event>, pin: string) {
+    return request<import("@/data/events").Event>(`/events/${id}`, {
+      method: "PUT",
+      headers: { "x-admin-pin": pin },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteEvent(id: string, pin: string) {
+    return request<{ message: string }>(`/events/${id}`, {
+      method: "DELETE",
+      headers: { "x-admin-pin": pin },
+    });
+  },
+
+  // ─── Admin Portal APIs ───────────────────────────────────────────
+  verifyAdminPin(pin: string) {
+    return request<{ success: boolean; message: string }>("/admin/auth", {
+      method: "POST",
+      body: JSON.stringify({ pin }),
+    });
+  },
+
+  getAdminStats(pin: string) {
+    return request<{
+      totalEvents: number;
+      totalRegistrations: number;
+      totalParticipants: number;
+      totalCheckedIn: number;
+      eventStats: Record<string, { totalRegistrations: number; totalParticipants: number; checkedIn: number }>;
+    }>("/admin/stats", {
+      headers: { "x-admin-pin": pin },
+    });
+  },
+
+  getAdminRegistrations(pin: string, eventId?: string) {
+    const query = eventId ? `?eventId=${encodeURIComponent(eventId)}` : "";
+    return request<any[]>(`/admin/registrations${query}`, {
+      headers: { "x-admin-pin": pin },
+    });
+  },
+
+  resendAdminTicket(payload: { registrationId: string; isTeam: boolean }, pin: string) {
+    return request<{ success: boolean; message: string }>("/admin/resend-ticket", {
+      method: "POST",
+      headers: { "x-admin-pin": pin },
+      body: JSON.stringify(payload),
+    });
+  },
 };

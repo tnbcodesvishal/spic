@@ -2,16 +2,25 @@ export interface Event {
   id: string;
   name: string;
   date: string;
+  time?: string;
   venue: string;
   status: "upcoming" | "open" | "closed" | "ended";
   category: "hackathon" | "workshop" | "talk" | "competition" | "visit" | "seminar";
   description: string;
+  registrationType?: "individual" | "team";
+  minTeamSize?: number;
+  maxTeamSize?: number;
+  requirePpt?: boolean;
+  whatsappGroupUrl?: string;
+  featured?: boolean;
   attendees?: number;
   speakers?: number;
   highlightsUrl?: string;
   registrationUrl?: string;
   image?: string;
   imageList?: string[]; // List of image filenames in the event folder
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const upcomingEvents: Event[] = [
@@ -19,21 +28,32 @@ export const upcomingEvents: Event[] = [
     id: "ideation-2",
     name: "Ideation '26",
     date: "25 & 27 April 2026",
+    time: "10:00 AM onwards",
     venue: "Seminal Hall , D Block",
     status: "open",
     category: "competition",
     description: "Intra-college pitch competition where students present innovative ideas to a panel of industry experts and investors.",
-    registrationUrl: "#",
+    registrationType: "team",
+    minTeamSize: 1,
+    maxTeamSize: 4,
+    requirePpt: true,
+    featured: true,
+    whatsappGroupUrl: "https://chat.whatsapp.com/test-invite",
+    registrationUrl: "/register/ideation-2",
   },
   {
-    
     id: "tedx-rkgit-2026",
     name: "TEDx RKGIT",
     date: "2026-04-01",
+    time: "11:00 AM",
     venue: "D Block",
     status: "closed",
     category: "talk",
     description: "An independently organized TEDx event featuring inspiring talks from thought leaders, innovators, and changemakers.",
+    registrationType: "individual",
+    minTeamSize: 1,
+    maxTeamSize: 1,
+    requirePpt: false,
     highlightsUrl: "#",
   },
 ];

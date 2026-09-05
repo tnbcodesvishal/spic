@@ -72,8 +72,11 @@ function playSound(type: "success" | "error") {
   }
 }
 
-export default function Scanner() {
-  const [authenticated, setAuthenticated] = useState(false);
+export default function Scanner({ skipAuth }: { skipAuth?: boolean } = {}) {
+  const [authenticated, setAuthenticated] = useState(() => {
+    if (skipAuth) return true;
+    return typeof window !== "undefined" && window.sessionStorage?.getItem("spic_admin_pin") === ADMIN_PIN;
+  });
   const [pin, setPin] = useState("");
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [loading, setLoading] = useState(false);

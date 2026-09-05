@@ -64,6 +64,11 @@ class MockDocRef {
     this.collectionMap.set(this.id, { ...existing, ...data });
     this.saveCallback();
   }
+
+  async delete() {
+    this.collectionMap.delete(this.id);
+    this.saveCallback();
+  }
 }
 
 class MockQuery {

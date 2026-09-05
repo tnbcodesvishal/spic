@@ -93,23 +93,25 @@ export default function EventRegistrationForm({ event, onSuccess }: Props) {
         </p>
 
         <div className="flex flex-col gap-3 justify-center items-center">
-            <div className="w-full mt-2 p-6 rounded-2xl bg-[#25D366]/5 border border-[#25D366]/20 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
-              <p className="text-[10px] font-bold text-[#25D366] mb-2 uppercase tracking-[0.2em]">
-                Stay Updated
-              </p>
-              <h4 className="text-sm font-semibold mb-2">Join the WhatsApp Group</h4>
-              <p className="text-[11px] text-muted-foreground mb-4 leading-relaxed">
-                Get the latest updates, event schedules, and important announcements directly on your phone.
-              </p>
-              <Button 
-                asChild
-                className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white border-none shadow-lg shadow-[#25D366]/20 font-bold"
-              >
-                <a href="https://chat.whatsapp.com/LSMLeVejLRhALy4ohrSiF2?mode=gi_t" target="_blank" rel="noopener noreferrer">
-                  Join Group Now
-                </a>
-              </Button>
-            </div>
+            {event.whatsappGroupUrl && (
+              <div className="w-full mt-2 p-6 rounded-2xl bg-[#25D366]/5 border border-[#25D366]/20 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
+                <p className="text-[10px] font-bold text-[#25D366] mb-2 uppercase tracking-[0.2em]">
+                  Stay Updated
+                </p>
+                <h4 className="text-sm font-semibold mb-2">Join the WhatsApp Group</h4>
+                <p className="text-[11px] text-muted-foreground mb-4 leading-relaxed">
+                  Get the latest updates, event schedules, and important announcements directly on your phone.
+                </p>
+                <Button 
+                  asChild
+                  className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white border-none shadow-lg shadow-[#25D366]/20 font-bold"
+                >
+                  <a href={event.whatsappGroupUrl} target="_blank" rel="noopener noreferrer">
+                    Join Group Now
+                  </a>
+                </Button>
+              </div>
+            )}
 
             <Button
                 variant="ghost"
