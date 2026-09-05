@@ -67,7 +67,10 @@ function buildHtml(data: TicketEmailData): string {
 
   // Use a reliable external QR generator API (solves broken image issue)
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrContent)}`;
-  const logoUrl = "https://spic-rkgit.onrender.com/Gemini_Generated_Image_c51bomc51bomc51b-removebg-preview.png";
+  const defaultBaseUrl = "https://spic-8iibw8t1o-vishals-projects-3da3f30c.vercel.app";
+  const rawBase = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : defaultBaseUrl);
+  const baseUrl = rawBase.replace(/\/+$/, "");
+  const logoUrl = `${baseUrl}/spic-logo.png`;
 
   return `
 <!DOCTYPE html>
@@ -329,7 +332,10 @@ function buildTeamHtml(data: TeamTicketEmailData, memberIndex: number): string {
   });
 
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrContent)}`;
-  const logoUrl = "https://spic-rkgit.onrender.com/Gemini_Generated_Image_c51bomc51bomc51b-removebg-preview.png";
+  const defaultBaseUrl = "https://spic-8iibw8t1o-vishals-projects-3da3f30c.vercel.app";
+  const rawBase = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : defaultBaseUrl);
+  const baseUrl = rawBase.replace(/\/+$/, "");
+  const logoUrl = `${baseUrl}/spic-logo.png`;
 
   return `
 <!DOCTYPE html>
