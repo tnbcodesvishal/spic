@@ -203,9 +203,11 @@ async function ensureSeeded() {
   try {
     const db = getDb();
     const snapshot = await db.collection(EVENTS_COLLECTION).get();
-    if (snapshot.empty || snapshot.docs.length === 0) {
-      console.log("[events] Seeding default events into database...");
-      for (const ev of DEFAULT_EVENTS) {
+    const existingIds = new Set(snapshot.docs.map((d: any) => d.id));
+
+    for (const ev of DEFAULT_EVENTS) {
+      if (!existingIds.has(ev.id)) {
+        console.log(`[events] Seeding default event "${ev.id}" (${ev.name}) into database...`);
         await db.collection(EVENTS_COLLECTION).doc(ev.id).set({
           ...ev,
           createdAt: new Date().toISOString(),
@@ -232,13 +234,11 @@ router.get("/", async (_req: Request, res: Response) => {
       ...doc.data(),
     }));
 
-    // If database returned nothing, return default events
-    if (events.length === 0) {
-      res.json(DEFAULT_EVENTS);
-      return;
-    }
+    const eventsMap = new Map<string, EventData>();
+    DEFAULT_EVENTS.forEach((e) => eventsMap.set(e.id, e));
+    events.forEach((e) => eventsMap.set(e.id, e));
 
-    res.json(events);
+    res.json(Array.from(eventsMap.values()));
   } catch (err: any) {
     console.error("[events] Error fetching events:", err);
     res.json(DEFAULT_EVENTS);

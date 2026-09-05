@@ -59,16 +59,17 @@ export function sortEventsList(events: Event[]): Event[] {
   });
 }
 
-// ─── Seed default events into Firebase Firestore if collection is empty ───
+// ─── Seed default events into Firebase Firestore if missing ───
 export async function seedFirebaseEventsIfEmpty(): Promise<void> {
   if (isSeeded) return;
   try {
     const colRef = collection(db, EVENTS_COLLECTION);
     const snap = await getDocs(colRef);
+    const existingIds = new Set(snap.docs.map((d) => d.id));
 
-    if (snap.empty || snap.docs.length === 0) {
-      console.log("[Firebase] Seeding initial events to Firestore...");
-      for (const ev of DEFAULT_EVENTS) {
+    // Ensure all DEFAULT_EVENTS (including Ideation '26) exist in Firestore
+    for (const ev of DEFAULT_EVENTS) {
+      if (!existingIds.has(ev.id)) {
         const cleanEv = sanitizeForFirestore({
           ...ev,
           whatsappGroupUrl: ev.whatsappGroupUrl || "",
@@ -78,8 +79,8 @@ export async function seedFirebaseEventsIfEmpty(): Promise<void> {
           updatedAt: new Date().toISOString(),
         });
         await setDoc(doc(db, EVENTS_COLLECTION, ev.id), cleanEv, { merge: true });
+        console.log(`[Firebase] Seeded missing event "${ev.id}" (${ev.name}) to Firestore.`);
       }
-      console.log("[Firebase] Successfully seeded default events into Firestore.");
     }
     isSeeded = true;
   } catch (err: any) {
@@ -94,13 +95,19 @@ export async function getFirebaseEvents(): Promise<Event[]> {
     const colRef = collection(db, EVENTS_COLLECTION);
     const snap = await getDocs(colRef);
 
-    if (!snap.empty && snap.docs.length > 0) {
-      const list: Event[] = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as any),
-      }));
-      return sortEventsList(list);
-    }
+    const list: Event[] = !snap.empty
+      ? snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        }))
+      : [];
+
+    // Always merge any DEFAULT_EVENTS missing from Firestore map so Ideation '26 is never lost
+    const eventMap = new Map<string, Event>();
+    DEFAULT_EVENTS.forEach((e) => eventMap.set(e.id, e));
+    list.forEach((e) => eventMap.set(e.id, e));
+
+    return sortEventsList(Array.from(eventMap.values()));
   } catch (err: any) {
     console.warn("[Firebase] Error fetching from Firestore, falling back to API / local:", err.message);
   }
@@ -231,18 +238,18 @@ export function subscribeToFirebaseEvents(
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        if (!snapshot.empty) {
-          const list: Event[] = snapshot.docs.map((d) => ({
-            id: d.id,
-            ...(d.data() as any),
-          }));
-          onUpdate(sortEventsList(list));
-        } else {
-          // If Firestore is empty, seed it
-          seedFirebaseEventsIfEmpty().then(() => {
-            onUpdate(sortEventsList(DEFAULT_EVENTS));
-          });
-        }
+        const list: Event[] = !snapshot.empty
+          ? snapshot.docs.map((d) => ({
+              id: d.id,
+              ...(d.data() as any),
+            }))
+          : [];
+
+        const eventMap = new Map<string, Event>();
+        DEFAULT_EVENTS.forEach((e) => eventMap.set(e.id, e));
+        list.forEach((e) => eventMap.set(e.id, e));
+
+        onUpdate(sortEventsList(Array.from(eventMap.values())));
       },
       (error) => {
         console.warn("[Firebase] Realtime snapshot error:", error.message);

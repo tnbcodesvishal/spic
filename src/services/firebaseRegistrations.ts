@@ -228,13 +228,10 @@ export async function seedFirebaseRegistrationsFromLocalDb(): Promise<void> {
     const indSnap = await getDocs(collection(db, REGISTRATIONS_COLLECTION));
     const teamSnap = await getDocs(collection(db, TEAM_REGISTRATIONS_COLLECTION));
 
-    // If both are populated, skip migration
-    if (!indSnap.empty || !teamSnap.empty) {
-      isMigrated = true;
-      return;
-    }
+    const existingIndIds = new Set(indSnap.docs.map((d) => d.id));
+    const existingTeamIds = new Set(teamSnap.docs.map((d) => d.id));
 
-    console.log("[Firebase] Seeding initial registrations to Firestore...");
+    console.log("[Firebase] Checking initial registrations seed for Firestore...");
     // Local DB initial records backup seed
     const initialIndData: Record<string, any> = {
       "5063c8d9-855b-40f5-8175-3dc5f5284f1a": {
@@ -359,7 +356,9 @@ export async function seedFirebaseRegistrationsFromLocalDb(): Promise<void> {
     };
 
     for (const [id, data] of Object.entries(initialIndData)) {
-      await saveFirebaseRegistration({ id, ...data });
+      if (!existingIndIds.has(id)) {
+        await saveFirebaseRegistration({ id, ...data });
+      }
     }
 
     isMigrated = true;
