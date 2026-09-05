@@ -58,17 +58,16 @@ export default function EventRegistrationForm({ event, onSuccess }: Props) {
         branch: values.branch,
       });
 
-      try {
-        await saveFirebaseRegistration({
-          ...result,
-          phone: values.phone || "",
-          rollNumber: values.rollNumber,
-          year: values.year,
-          branch: values.branch,
-        });
-      } catch (fbErr: any) {
+      // Fire background Firestore save without blocking success UI
+      saveFirebaseRegistration({
+        ...result,
+        phone: values.phone || "",
+        rollNumber: values.rollNumber,
+        year: values.year,
+        branch: values.branch,
+      }).catch((fbErr: any) => {
         console.warn("[Registration] Firestore direct write note:", fbErr.message);
-      }
+      });
 
       setRegistration(result);
       setStep("success");

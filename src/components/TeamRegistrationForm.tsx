@@ -253,23 +253,22 @@ export default function TeamRegistrationForm({ event, onSuccess }: Props) {
         pptLink,
       });
 
-      try {
-        await saveFirebaseTeamRegistration({
-          id: result.id,
-          eventId: event.id,
-          eventName: event.name,
-          eventDate: event.date,
-          eventVenue: event.venue,
-          teamName: values.teamName.trim(),
-          leadEmail: validMembers[0]?.email?.trim()?.toLowerCase(),
-          members: validMembers,
-          pptLink,
-          createdAt: new Date().toISOString(),
-          isTeam: true,
-        });
-      } catch (fbErr: any) {
+      // Fire background Firestore team save without blocking success UI
+      saveFirebaseTeamRegistration({
+        id: result.id,
+        eventId: event.id,
+        eventName: event.name,
+        eventDate: event.date,
+        eventVenue: event.venue,
+        teamName: values.teamName.trim(),
+        leadEmail: validMembers[0]?.email?.trim()?.toLowerCase(),
+        members: validMembers,
+        pptLink,
+        createdAt: new Date().toISOString(),
+        isTeam: true,
+      }).catch((fbErr: any) => {
         console.warn("[TeamRegistration] Firestore direct write note:", fbErr.message);
-      }
+      });
 
       setRegistration(result);
       setStep("success");

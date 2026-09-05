@@ -75,62 +75,63 @@ router.post("/", async (req: Request, res: Response) => {
 
   await db.collection(REGISTRATIONS).doc(id).set(registration);
 
-  // Save to Google Sheets
-  try {
-    const sheetRes = await appendRegistrationRow({
-      id,
-      participantName: registration.participantName,
-      participantEmail: registration.participantEmail,
-      phone: registration.phone,
-      rollNumber: registration.rollNumber,
-      year: registration.year,
-      branch: registration.branch,
-      eventName: registration.eventName,
-      eventDate: registration.eventDate,
-      eventVenue: registration.eventVenue,
-      createdAt: registration.createdAt,
-    });
-    if (!sheetRes.success) {
-      console.warn(`[register] Google Sheets warning for ${id}: ${sheetRes.error}`);
-    }
-  } catch (err: any) {
-    console.error(`[register] Failed to append registration to sheets for ${id}:`, err.message);
-  }
-
-  // Send ticket email
-  let emailStatus: "sent" | "failed" = "pending";
-  try {
-    const emailRes = await sendTicketEmail({
-      to: emailLower,
-      participantName: name.trim(),
-      rollNumber: rollNumber.trim(),
-      branch: branch.trim(),
-      year: year.trim(),
-      phone: phone?.trim(),
-      eventName,
-      eventDate,
-      eventTime: req.body.eventTime || req.body.eventTiming || "10:00 AM onwards",
-      eventVenue,
-      registrationId: id,
-      eventId,
-      verificationToken,
-    });
-
-    emailStatus = emailRes.success ? "sent" : "failed";
-    await db.collection(REGISTRATIONS).doc(id).set({ emailStatus }, { merge: true });
-    if (!emailRes.success) {
-      console.error(`[register] Email send failed for ${id}:`, emailRes.error);
-    }
-  } catch (emailErr: any) {
-    console.error(`[register] Email exception for ${id}:`, emailErr.message);
-    emailStatus = "failed";
-  }
-
+  // Return HTTP 201 response immediately for instant UI feedback (~100ms)
   res.status(201).json({
     id,
     ...registration,
-    emailStatus,
+    emailStatus: "pending",
   });
+
+  // Background non-blocking operations (Google Sheets append + Ticket Email dispatch)
+  (async () => {
+    try {
+      const sheetRes = await appendRegistrationRow({
+        id,
+        participantName: registration.participantName,
+        participantEmail: registration.participantEmail,
+        phone: registration.phone,
+        rollNumber: registration.rollNumber,
+        year: registration.year,
+        branch: registration.branch,
+        eventName: registration.eventName,
+        eventDate: registration.eventDate,
+        eventVenue: registration.eventVenue,
+        createdAt: registration.createdAt,
+      });
+      if (!sheetRes.success) {
+        console.warn(`[register] Google Sheets warning for ${id}: ${sheetRes.error}`);
+      }
+    } catch (err: any) {
+      console.error(`[register] Failed to append registration to sheets for ${id}:`, err.message);
+    }
+
+    try {
+      const emailRes = await sendTicketEmail({
+        to: emailLower,
+        participantName: name.trim(),
+        rollNumber: rollNumber.trim(),
+        branch: branch.trim(),
+        year: year.trim(),
+        phone: phone?.trim(),
+        eventName,
+        eventDate,
+        eventTime: req.body.eventTime || req.body.eventTiming || "10:00 AM onwards",
+        eventVenue,
+        registrationId: id,
+        eventId,
+        verificationToken,
+      });
+
+      const emailStatus = emailRes.success ? "sent" : "failed";
+      await db.collection(REGISTRATIONS).doc(id).set({ emailStatus }, { merge: true });
+      if (!emailRes.success) {
+        console.error(`[register] Email send failed for ${id}:`, emailRes.error);
+      }
+    } catch (emailErr: any) {
+      console.error(`[register] Email exception for ${id}:`, emailErr.message);
+      await db.collection(REGISTRATIONS).doc(id).set({ emailStatus: "failed" }, { merge: true });
+    }
+  })();
 });
 
 // ─── List registrations by email ────────────────────────────────────
@@ -332,35 +333,42 @@ router.post("/team", async (req: Request, res: Response) => {
 
   await db.collection("team_registrations").doc(id).set(registration);
 
-  // Save to Google Sheets
-  appendTeamRegistrationRow({
-    teamName: registration.teamName,
-    members: registration.members,
-    pptLink: registration.pptLink
-  }).catch((err) => console.warn("[registerTeam] Sheets error:", err));
-
-  // Send team email
-  try {
-    const emailRes = await sendTeamTicketEmail({
-      teamName: registration.teamName,
-      members: registration.members,
-      eventName: registration.eventName,
-      eventDate: registration.eventDate,
-      eventVenue: registration.eventVenue,
-      registrationId: id,
-      eventId: registration.eventId
-    });
-    const status = emailRes.success ? "sent" : "failed";
-    await db.collection("team_registrations").doc(id).set({ emailStatus: status }, { merge: true });
-  } catch (emailErr: any) {
-    console.error(`[registerTeam] Email exception for ${id}:`, emailErr.message);
-  }
-
+  // Return HTTP 201 immediately for instant UX
   res.status(201).json({
     id,
     teamName: registration.teamName,
     message: "Team successfully registered"
   });
+
+  // Background non-blocking operations (Google Sheets append + Team Ticket Email dispatch)
+  (async () => {
+    try {
+      await appendTeamRegistrationRow({
+        teamName: registration.teamName,
+        members: registration.members,
+        pptLink: registration.pptLink
+      });
+    } catch (err) {
+      console.warn("[registerTeam] Sheets error:", err);
+    }
+
+    try {
+      const emailRes = await sendTeamTicketEmail({
+        teamName: registration.teamName,
+        members: registration.members,
+        eventName: registration.eventName,
+        eventDate: registration.eventDate,
+        eventVenue: registration.eventVenue,
+        registrationId: id,
+        eventId: registration.eventId
+      });
+      const status = emailRes.success ? "sent" : "failed";
+      await db.collection("team_registrations").doc(id).set({ emailStatus: status }, { merge: true });
+    } catch (emailErr: any) {
+      console.error(`[registerTeam] Email exception for ${id}:`, emailErr.message);
+      await db.collection("team_registrations").doc(id).set({ emailStatus: "failed" }, { merge: true });
+    }
+  })();
 });
 
 export default router;
