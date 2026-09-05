@@ -215,6 +215,24 @@ async function getEtherealTransporter() {
   return testAccountTransporter;
 }
 
+let cachedGmailTransporter: nodemailer.Transporter | null = null;
+
+function getGmailTransporter(smtpUser: string, smtpPass: string): nodemailer.Transporter {
+  if (!cachedGmailTransporter) {
+    cachedGmailTransporter = nodemailer.createTransport({
+      service: "gmail",
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 8000,
+      auth: { user: smtpUser, pass: smtpPass },
+    });
+  }
+  return cachedGmailTransporter;
+}
+
 export async function sendTicketEmail(
   data: TicketEmailData
 ): Promise<{ success: boolean; error?: string }> {
@@ -226,12 +244,9 @@ export async function sendTicketEmail(
   const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
 
-  // 1. Try Gmail SMTP Primary
+  // 1. Try Gmail SMTP Primary (Pooled connection with 5s connection timeout)
   try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: smtpUser, pass: smtpPass },
-    });
+    const transporter = getGmailTransporter(smtpUser, smtpPass);
 
     await transporter.sendMail({
       from: `"SPIC Events" <${smtpUser}>`,
@@ -246,8 +261,11 @@ export async function sendTicketEmail(
     console.warn(`[email] Gmail SMTP attempt failed for ${data.to}:`, smtpErr.message);
   }
 
-  // 2. Fallback: Google Apps Script Webhook
+  // 2. Fallback: Google Apps Script Webhook (with 5s timeout)
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     const res = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -257,8 +275,9 @@ export async function sendTicketEmail(
         subject,
         emailHtml: htmlContent,
       }),
-      redirect: "follow",
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     const text = await res.text();
     if (res.ok && (text.includes("email_sent") || text.includes("success"))) {
@@ -395,14 +414,6 @@ function buildTeamHtml(data: TeamTicketEmailData, memberIndex: number): string {
               </p>
             </td>
           </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-}
-
 export async function sendTeamTicketEmail(
   data: TeamTicketEmailData
 ): Promise<{ success: boolean; error?: string }> {
@@ -413,21 +424,14 @@ export async function sendTeamTicketEmail(
   const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || "mr.vishalsingh987@gmail.com";
   const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || "ewficvtigzzypbrt";
 
-  let sentCount = 0;
-
-  for (let i = 0; i < data.members.length; i++) {
-    const m = data.members[i];
-    if (!m.email) continue;
+  // Dispatch all team member emails simultaneously in parallel
+  const sendPromises = data.members.map(async (m, i) => {
+    if (!m.email) return false;
     const memberHtml = buildTeamHtml(data, i);
-
-    let memberSent = false;
 
     // 1. Try Gmail SMTP
     try {
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: smtpUser, pass: smtpPass },
-      });
+      const transporter = getGmailTransporter(smtpUser, smtpPass);
       await transporter.sendMail({
         from: `"SPIC Events" <${smtpUser}>`,
         to: m.email,
@@ -435,37 +439,43 @@ export async function sendTeamTicketEmail(
         html: memberHtml,
       });
       console.log(`[email] \u2705 Team ticket sent via Gmail SMTP to ${m.email}`);
-      memberSent = true;
+      return true;
     } catch (smtpErr: any) {
       console.warn(`[email] Gmail SMTP failed for team member ${m.email}:`, smtpErr.message);
     }
 
-    // 2. Fallback: Google Webhook
-    if (!memberSent) {
-      try {
-        const res = await fetch(WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "send_email",
-            email: m.email,
-            subject,
-            emailHtml: memberHtml,
-          }),
-          redirect: "follow",
-        });
-        const text = await res.text();
-        if (res.ok && (text.includes("email_sent") || text.includes("success"))) {
-          console.log(`[email] \u2705 Team ticket sent via Google Webhook fallback to ${m.email}`);
-          memberSent = true;
-        }
-      } catch (webhookErr: any) {
-        console.warn(`[email] Webhook fallback failed for team member ${m.email}:`, webhookErr.message);
+    // 2. Fallback: Google Webhook with 5s timeout
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const res = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "send_email",
+          email: m.email,
+          subject,
+          emailHtml: memberHtml,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      const text = await res.text();
+      if (res.ok && (text.includes("email_sent") || text.includes("success"))) {
+        console.log(`[email] \u2705 Team ticket sent via Google Webhook fallback to ${m.email}`);
+        return true;
       }
+    } catch (webhookErr: any) {
+      console.warn(`[email] Webhook fallback failed for team member ${m.email}:`, webhookErr.message);
     }
 
-    if (memberSent) sentCount++;
-  }
+    return false;
+  });
+
+  const results = await Promise.all(sendPromises);
+  const sentCount = results.filter(Boolean).length;
 
   return { success: sentCount > 0 };
 }
