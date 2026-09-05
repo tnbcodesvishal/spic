@@ -420,6 +420,14 @@ function buildTeamHtml(data: TeamTicketEmailData, memberIndex: number): string {
               </p>
             </td>
           </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 export async function sendTeamTicketEmail(
   data: TeamTicketEmailData
 ): Promise<{ success: boolean; error?: string }> {
