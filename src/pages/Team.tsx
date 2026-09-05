@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import AnimatedSection from "@/components/AnimatedSection";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { facultyAdvisor, coreLeadership, departmentHeads, teamMembers } from "@/data/team";
+import { facultyAdvisor as staticFaculty, coreLeadership as staticCore, departmentHeads as staticDept, teamMembers as staticMembers } from "@/data/team";
 import { User } from "lucide-react";
 import type { TeamMember } from "@/data/team";
 import { motion } from "framer-motion";
+import { subscribeToTeam, type TeamMemberDoc } from "@/services/firebaseTeam";
 
 type MemberCardProps = {
   member: TeamMember;
@@ -72,6 +73,34 @@ const MemberCard = ({
 const Team = () => {
   const [activeMember, setActiveMember] = useState<TeamMember | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [teamDocs, setTeamDocs] = useState<TeamMemberDoc[]>([]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToTeam((list) => {
+      setTeamDocs(list);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const facultyAdvisor = useMemo(() => {
+    const found = teamDocs.find((m) => m.category === "faculty");
+    return found || staticFaculty;
+  }, [teamDocs]);
+
+  const coreLeadership = useMemo(() => {
+    const list = teamDocs.filter((m) => m.category === "core");
+    return list.length > 0 ? list : staticCore;
+  }, [teamDocs]);
+
+  const departmentHeads = useMemo(() => {
+    const list = teamDocs.filter((m) => m.category === "department");
+    return list.length > 0 ? list : staticDept;
+  }, [teamDocs]);
+
+  const teamMembers = useMemo(() => {
+    const list = teamDocs.filter((m) => m.category === "member");
+    return list.length > 0 ? list : staticMembers;
+  }, [teamDocs]);
 
   const handleOpenMember = (member: TeamMember) => {
     setActiveMember(member);
@@ -95,76 +124,83 @@ const Team = () => {
       </section>
 
       <div className="container mx-auto px-4 py-14 sm:py-20 space-y-16">
-        {/* Faculty */}
-        <section className="max-w-xs mx-auto">
-          <AnimatedSection className="text-center mb-6">
-            <h2 className="font-display text-xl sm:text-2xl font-semibold text-foreground tracking-tight">
-              Faculty Coordinator
-            </h2>
-            <div className="mx-auto mt-3 h-px w-24 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-          </AnimatedSection>
-          <AnimatedSection>
-            <MemberCard member={facultyAdvisor} size="lg" onClick={() => handleOpenMember(facultyAdvisor)} />
-          </AnimatedSection>
-        </section>
+        {/* Faculty Coordinator */}
+        {facultyAdvisor && (
+          <section className="max-w-xs mx-auto">
+            <AnimatedSection className="text-center mb-6">
+              <h2 className="font-display text-xl sm:text-2xl font-semibold text-foreground tracking-tight">
+                Faculty Coordinator
+              </h2>
+              <div className="mx-auto mt-3 h-px w-24 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+            </AnimatedSection>
+            <AnimatedSection>
+              <MemberCard member={facultyAdvisor} size="lg" onClick={() => handleOpenMember(facultyAdvisor)} />
+            </AnimatedSection>
+          </section>
+        )}
 
         {/* Core Leadership */}
-        <section>
-          <AnimatedSection className="text-center mb-6">
-            <h2 className="font-display text-xl sm:text-2xl font-semibold text-foreground tracking-tight">
-              Core Leadership
-            </h2>
-            <div className="mx-auto mt-3 h-px w-24 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-          </AnimatedSection>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 max-w-5xl mx-auto">
-            {coreLeadership.map((m, i) => (
-              <AnimatedSection key={m.id} delay={i * 0.06}>
-                <MemberCard member={m} size="lg" onClick={() => handleOpenMember(m)} />
-              </AnimatedSection>
-            ))}
-          </div>
-        </section>
+        {coreLeadership.length > 0 && (
+          <section>
+            <AnimatedSection className="text-center mb-6">
+              <h2 className="font-display text-xl sm:text-2xl font-semibold text-foreground tracking-tight">
+                Core Leadership
+              </h2>
+              <div className="mx-auto mt-3 h-px w-24 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+            </AnimatedSection>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 max-w-5xl mx-auto">
+              {coreLeadership.map((m, i) => (
+                <AnimatedSection key={m.id} delay={i * 0.06}>
+                  <MemberCard member={m} size="lg" onClick={() => handleOpenMember(m)} />
+                </AnimatedSection>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Department Heads */}
-        <section>
-          <AnimatedSection className="text-center mb-6">
-            <h2 className="font-display text-xl sm:text-2xl font-semibold text-foreground tracking-tight">
-              Department Heads
-            </h2>
-            <div className="mx-auto mt-3 h-px w-24 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-          </AnimatedSection>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
-            {departmentHeads.map((m, i) => (
-              <AnimatedSection key={m.id} delay={i * 0.05}>
-                <MemberCard member={m} onClick={() => handleOpenMember(m)} />
-              </AnimatedSection>
-            ))}
-          </div>
-        </section>
+        {departmentHeads.length > 0 && (
+          <section>
+            <AnimatedSection className="text-center mb-6">
+              <h2 className="font-display text-xl sm:text-2xl font-semibold text-foreground tracking-tight">
+                Department Heads
+              </h2>
+              <div className="mx-auto mt-3 h-px w-24 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+            </AnimatedSection>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
+              {departmentHeads.map((m, i) => (
+                <AnimatedSection key={m.id} delay={i * 0.05}>
+                  <MemberCard member={m} onClick={() => handleOpenMember(m)} />
+                </AnimatedSection>
+              ))}
+            </div>
+          </section>
+        )}
 
-        {/* Members */}
-        <section>
-          <AnimatedSection className="text-center mb-6">
-            <h2 className="font-display text-xl sm:text-2xl font-semibold text-foreground tracking-tight">
-              Team Members
-            </h2>
-            <div className="mx-auto mt-3 h-px w-24 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-            <p className="text-sm text-muted-foreground mt-3"></p>
-          </AnimatedSection>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
-            {teamMembers.map((m, i) => (
-              <AnimatedSection key={m.id} delay={i * 0.04}>
-                <MemberCard
-                  member={m}
-                  size="sm"
-                  showRole={false}
-                  showDepartment={false}
-                  onClick={() => handleOpenMember(m)}
-                />
-              </AnimatedSection>
-            ))}
-          </div>
-        </section>
+        {/* Team Members */}
+        {teamMembers.length > 0 && (
+          <section>
+            <AnimatedSection className="text-center mb-6">
+              <h2 className="font-display text-xl sm:text-2xl font-semibold text-foreground tracking-tight">
+                Team Members
+              </h2>
+              <div className="mx-auto mt-3 h-px w-24 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+            </AnimatedSection>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
+              {teamMembers.map((m, i) => (
+                <AnimatedSection key={m.id} delay={i * 0.04}>
+                  <MemberCard
+                    member={m}
+                    size="sm"
+                    showRole={false}
+                    showDepartment={false}
+                    onClick={() => handleOpenMember(m)}
+                  />
+                </AnimatedSection>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -207,7 +243,6 @@ const Team = () => {
               {activeMember.bio && (
                 <p className="mt-1 text-sm text-muted-foreground text-center max-w-md">{activeMember.bio}</p>
               )}
-
             </div>
           )}
         </DialogContent>

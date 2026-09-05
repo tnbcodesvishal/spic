@@ -50,6 +50,23 @@ import {
   getFirebaseRegistrations,
   subscribeToFirebaseRegistrations,
 } from "@/services/firebaseRegistrations";
+import {
+  subscribeToTeam,
+  addTeamMember,
+  updateTeamMember,
+  deleteTeamMember,
+  uploadTeamImage,
+  type TeamMemberDoc,
+} from "@/services/firebaseTeam";
+import {
+  subscribeToGallery,
+  addGalleryItem,
+  updateGalleryItem,
+  deleteGalleryItem,
+  uploadGalleryImages,
+  type GalleryAlbum,
+} from "@/services/firebaseGallery";
+import { Image as ImageIcon, UserPlus, UploadCloud, Link2 } from "lucide-react";
 
 const ADMIN_PIN = "spic@2026";
 const CATEGORIES = ["competition", "hackathon", "workshop", "talk", "seminar", "visit"] as const;
@@ -72,7 +89,64 @@ export default function Admin() {
     return typeof window !== "undefined" && window.sessionStorage?.getItem("spic_admin_pin") === ADMIN_PIN;
   });
   const [authError, setAuthError] = useState("");
-  const [activeTab, setActiveTab] = useState<"events" | "registrations" | "scanner">("events");
+  const [activeTab, setActiveTab] = useState<"events" | "registrations" | "scanner" | "team" | "gallery">("events");
+
+  // Team state
+  const [teamList, setTeamList] = useState<TeamMemberDoc[]>([]);
+  const [teamModalOpen, setTeamModalOpen] = useState(false);
+  const [editingTeamMember, setEditingTeamMember] = useState<TeamMemberDoc | null>(null);
+  const [deleteConfirmTeamMember, setDeleteConfirmTeamMember] = useState<TeamMemberDoc | null>(null);
+  const [teamSearchTerm, setTeamSearchTerm] = useState("");
+  const [teamCategoryFilter, setTeamCategoryFilter] = useState<string>("all");
+  const [teamFormData, setTeamFormData] = useState<{
+    id: string;
+    name: string;
+    role: string;
+    category: "faculty" | "core" | "department" | "member";
+    department: string;
+    linkedinUrl: string;
+    image: string;
+    bio: string;
+  }>({
+    id: "",
+    name: "",
+    role: "Member",
+    category: "member",
+    department: "Event Management",
+    linkedinUrl: "#",
+    image: "",
+    bio: "",
+  });
+  const [teamImageFile, setTeamImageFile] = useState<File | null>(null);
+  const [teamUploading, setTeamUploading] = useState(false);
+  const [teamSaving, setTeamSaving] = useState(false);
+
+  // Gallery state
+  const [galleryList, setGalleryList] = useState<GalleryAlbum[]>([]);
+  const [galleryModalOpen, setGalleryModalOpen] = useState(false);
+  const [editingGalleryAlbum, setEditingGalleryAlbum] = useState<GalleryAlbum | null>(null);
+  const [deleteConfirmGalleryAlbum, setDeleteConfirmGalleryAlbum] = useState<GalleryAlbum | null>(null);
+  const [gallerySearchTerm, setGallerySearchTerm] = useState("");
+  const [galleryFormData, setGalleryFormData] = useState<{
+    id: string;
+    title: string;
+    category: string;
+    description: string;
+    coverImage: string;
+    images: string[];
+    date: string;
+  }>({
+    id: "",
+    title: "",
+    category: "General",
+    description: "",
+    coverImage: "",
+    images: [],
+    date: "",
+  });
+  const [galleryFiles, setGalleryFiles] = useState<FileList | null>(null);
+  const [galleryImagesUploading, setGalleryImagesUploading] = useState(false);
+  const [gallerySaving, setGallerySaving] = useState(false);
 
   // Events state
   const [events, setEvents] = useState<Event[]>([]);
@@ -189,12 +263,221 @@ export default function Admin() {
         }
       });
 
+      // Listen for real-time Firebase Firestore Team updates
+      const unsubTeam = subscribeToTeam((realtimeTeam) => {
+        setTeamList(realtimeTeam);
+      });
+
+      // Listen for real-time Firebase Firestore Gallery updates
+      const unsubGallery = subscribeToGallery((realtimeGallery) => {
+        setGalleryList(realtimeGallery);
+      });
+
       return () => {
         unsubEvents();
         unsubRegs();
+        unsubTeam();
+        unsubGallery();
       };
     }
   }, [authenticated]);
+
+  // ─── Team Form & CRUD Handlers ─────────────────────────────────────
+  const openCreateTeamModal = () => {
+    setEditingTeamMember(null);
+    setTeamFormData({
+      id: "",
+      name: "",
+      role: "Member",
+      category: "member",
+      department: "Event Management",
+      linkedinUrl: "#",
+      image: "",
+      bio: "",
+    });
+    setTeamImageFile(null);
+    setTeamModalOpen(true);
+  };
+
+  const openEditTeamModal = (member: TeamMemberDoc) => {
+    setEditingTeamMember(member);
+    setTeamFormData({
+      id: member.id,
+      name: member.name,
+      role: member.role,
+      category: member.category || "member",
+      department: member.department || "",
+      linkedinUrl: member.linkedinUrl || "#",
+      image: member.image || "",
+      bio: member.bio || "",
+    });
+    setTeamImageFile(null);
+    setTeamModalOpen(true);
+  };
+
+  const handleSaveTeamMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!teamFormData.name.trim()) return;
+
+    setTeamSaving(true);
+    try {
+      let finalImageUrl = teamFormData.image;
+
+      if (teamImageFile) {
+        setTeamUploading(true);
+        finalImageUrl = await uploadTeamImage(teamImageFile);
+        setTeamUploading(false);
+      }
+
+      if (editingTeamMember) {
+        await updateTeamMember(editingTeamMember.id, {
+          ...teamFormData,
+          image: finalImageUrl,
+        });
+        toast({
+          title: "Team Member Updated",
+          description: `"${teamFormData.name}" updated in Firebase Firestore.`,
+        });
+      } else {
+        await addTeamMember({
+          ...teamFormData,
+          image: finalImageUrl,
+        });
+        toast({
+          title: "Team Member Added",
+          description: `"${teamFormData.name}" added to Firebase Firestore & Storage.`,
+        });
+      }
+      setTeamModalOpen(false);
+    } catch (err: any) {
+      toast({
+        title: "Save Failed",
+        description: err.message || "Could not save team member.",
+        variant: "destructive",
+      });
+    } finally {
+      setTeamSaving(false);
+      setTeamUploading(false);
+    }
+  };
+
+  const handleDeleteTeamMember = async () => {
+    if (!deleteConfirmTeamMember) return;
+    try {
+      await deleteTeamMember(deleteConfirmTeamMember.id, deleteConfirmTeamMember.image);
+      toast({
+        title: "Member Deleted",
+        description: `"${deleteConfirmTeamMember.name}" removed from Firebase Firestore & Storage.`,
+      });
+      setDeleteConfirmTeamMember(null);
+    } catch (err: any) {
+      toast({
+        title: "Delete Failed",
+        description: err.message || "Could not delete team member.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // ─── Gallery Form & CRUD Handlers ──────────────────────────────────
+  const openCreateGalleryModal = () => {
+    setEditingGalleryAlbum(null);
+    setGalleryFormData({
+      id: "",
+      title: "",
+      category: "General",
+      description: "",
+      coverImage: "",
+      images: [],
+      date: "",
+    });
+    setGalleryFiles(null);
+    setGalleryModalOpen(true);
+  };
+
+  const openEditGalleryModal = (album: GalleryAlbum) => {
+    setEditingGalleryAlbum(album);
+    setGalleryFormData({
+      id: album.id,
+      title: album.title,
+      category: album.category || "General",
+      description: album.description || "",
+      coverImage: album.coverImage || "",
+      images: album.images || [],
+      date: album.date || "",
+    });
+    setGalleryFiles(null);
+    setGalleryModalOpen(true);
+  };
+
+  const handleSaveGalleryAlbum = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!galleryFormData.title.trim()) return;
+
+    setGallerySaving(true);
+    try {
+      let uploadedUrls: string[] = [];
+
+      if (galleryFiles && galleryFiles.length > 0) {
+        setGalleryImagesUploading(true);
+        uploadedUrls = await uploadGalleryImages(Array.from(galleryFiles));
+        setGalleryImagesUploading(false);
+      }
+
+      const combinedImages = [...galleryFormData.images, ...uploadedUrls];
+      const cover = galleryFormData.coverImage || combinedImages[0] || "";
+
+      if (editingGalleryAlbum) {
+        await updateGalleryItem(editingGalleryAlbum.id, {
+          ...galleryFormData,
+          images: combinedImages,
+          coverImage: cover,
+        });
+        toast({
+          title: "Gallery Album Updated",
+          description: `"${galleryFormData.title}" updated in Firebase Firestore.`,
+        });
+      } else {
+        await addGalleryItem({
+          ...galleryFormData,
+          images: combinedImages,
+          coverImage: cover,
+        });
+        toast({
+          title: "Gallery Album Created",
+          description: `"${galleryFormData.title}" saved with ${combinedImages.length} images to Firebase Storage & Firestore.`,
+        });
+      }
+      setGalleryModalOpen(false);
+    } catch (err: any) {
+      toast({
+        title: "Save Failed",
+        description: err.message || "Could not save gallery album.",
+        variant: "destructive",
+      });
+    } finally {
+      setGallerySaving(false);
+      setGalleryImagesUploading(false);
+    }
+  };
+
+  const handleDeleteGalleryAlbum = async () => {
+    if (!deleteConfirmGalleryAlbum) return;
+    try {
+      await deleteGalleryItem(deleteConfirmGalleryAlbum.id, deleteConfirmGalleryAlbum.images);
+      toast({
+        title: "Gallery Album Deleted",
+        description: `"${deleteConfirmGalleryAlbum.title}" removed from Firebase Firestore & Storage.`,
+      });
+      setDeleteConfirmGalleryAlbum(null);
+    } catch (err: any) {
+      toast({
+        title: "Delete Failed",
+        description: err.message || "Could not delete gallery album.",
+        variant: "destructive",
+      });
+    }
+  };
 
   // ─── Event Form Helpers ─────────────────────────────────────────────
   const openCreateModal = () => {
@@ -678,6 +961,22 @@ export default function Admin() {
             className="text-xs font-semibold"
           >
             <ScanLine className="w-3.5 h-3.5 mr-1.5" /> Live Ticket Scanner
+          </Button>
+          <Button
+            size="sm"
+            variant={activeTab === "team" ? "default" : "ghost"}
+            onClick={() => setActiveTab("team")}
+            className="text-xs font-semibold"
+          >
+            <UserPlus className="w-3.5 h-3.5 mr-1.5" /> Team Manager ({teamList.length})
+          </Button>
+          <Button
+            size="sm"
+            variant={activeTab === "gallery" ? "default" : "ghost"}
+            onClick={() => setActiveTab("gallery")}
+            className="text-xs font-semibold"
+          >
+            <ImageIcon className="w-3.5 h-3.5 mr-1.5" /> Gallery Manager ({galleryList.length})
           </Button>
         </div>
 
@@ -1263,6 +1562,203 @@ export default function Admin() {
             </div>
           </AnimatedSection>
         )}
+
+        {/* ═══════════════════════════════════════════════════════════════
+            TAB 4: TEAM MANAGER
+           ═══════════════════════════════════════════════════════════════ */}
+        {activeTab === "team" && (
+          <AnimatedSection>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+              <div>
+                <h2 className="font-display text-lg font-bold">Team Members Manager</h2>
+                <p className="text-xs text-muted-foreground">
+                  Add new teammates, upload profile photos to Firebase Storage, and update leadership roles.
+                </p>
+              </div>
+              <Button onClick={openCreateTeamModal} className="font-semibold text-xs shadow-md shadow-primary/20">
+                <UserPlus className="w-4 h-4 mr-1.5" /> Add New Teammate
+              </Button>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="flex flex-col sm:flex-row items-center gap-3 mb-6">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search team members by name, role, or department..."
+                  value={teamSearchTerm}
+                  onChange={(e) => setTeamSearchTerm(e.target.value)}
+                  className="pl-9 text-xs"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+                {["all", "faculty", "core", "department", "member"].map((cat) => (
+                  <Button
+                    key={cat}
+                    size="sm"
+                    variant={teamCategoryFilter === cat ? "default" : "outline"}
+                    onClick={() => setTeamCategoryFilter(cat)}
+                    className="text-xs capitalize h-8 px-3"
+                  >
+                    {cat}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Team Members Grid */}
+            {(() => {
+              const filtered = teamList.filter((m) => {
+                const matchesCat = teamCategoryFilter === "all" || m.category === teamCategoryFilter;
+                const q = teamSearchTerm.toLowerCase().trim();
+                const matchesQ =
+                  !q ||
+                  m.name.toLowerCase().includes(q) ||
+                  m.role.toLowerCase().includes(q) ||
+                  (m.department && m.department.toLowerCase().includes(q));
+                return matchesCat && matchesQ;
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="py-16 text-center border border-dashed rounded-2xl">
+                    <p className="text-sm text-muted-foreground mb-4">No team members found.</p>
+                    <Button onClick={openCreateTeamModal} size="sm">Add First Teammate</Button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {filtered.map((member) => (
+                    <Card key={member.id} className="border-border/60 glass-card flex flex-col justify-between hover:border-primary/40 transition-all">
+                      <CardContent className="p-4 flex flex-col items-center text-center">
+                        <div className="w-20 h-20 rounded-full overflow-hidden mb-3 border-2 border-primary/30 bg-muted flex items-center justify-center">
+                          {member.image ? (
+                            <img src={member.image} alt={member.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <Users className="w-8 h-8 text-muted-foreground" />
+                          )}
+                        </div>
+                        <h3 className="font-display font-bold text-sm text-foreground mb-1">{member.name}</h3>
+                        <Badge variant="outline" className="text-[10px] uppercase font-bold text-primary border-primary/30 mb-1">
+                          {member.role}
+                        </Badge>
+                        {member.department && (
+                          <p className="text-xs text-muted-foreground mb-2">{member.department}</p>
+                        )}
+                        <span className="text-[10px] text-muted-foreground uppercase px-2 py-0.5 rounded bg-muted">
+                          Category: {member.category}
+                        </span>
+                      </CardContent>
+                      <div className="p-3 border-t border-border/40 flex items-center justify-between bg-muted/20">
+                        <Button size="sm" variant="ghost" className="h-8 text-xs text-primary" onClick={() => openEditTeamModal(member)}>
+                          <Edit2 className="w-3.5 h-3.5 mr-1" /> Edit
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8 text-xs text-destructive hover:bg-destructive/10" onClick={() => setDeleteConfirmTeamMember(member)}>
+                          <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              );
+            })()}
+          </AnimatedSection>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════
+            TAB 5: GALLERY MANAGER
+           ═══════════════════════════════════════════════════════════════ */}
+        {activeTab === "gallery" && (
+          <AnimatedSection>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+              <div>
+                <h2 className="font-display text-lg font-bold">Event Gallery Manager</h2>
+                <p className="text-xs text-muted-foreground">
+                  Create gallery albums, upload multi-photo sets to Firebase Storage, and manage event highlights.
+                </p>
+              </div>
+              <Button onClick={openCreateGalleryModal} className="font-semibold text-xs shadow-md shadow-primary/20">
+                <ImageIcon className="w-4 h-4 mr-1.5" /> Create Gallery Album
+              </Button>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative max-w-md w-full mb-6">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search gallery albums by title or category..."
+                value={gallerySearchTerm}
+                onChange={(e) => setGallerySearchTerm(e.target.value)}
+                className="pl-9 text-xs"
+              />
+            </div>
+
+            {/* Gallery Albums Grid */}
+            {(() => {
+              const filtered = galleryList.filter((a) => {
+                const q = gallerySearchTerm.toLowerCase().trim();
+                return !q || a.title.toLowerCase().includes(q) || (a.category && a.category.toLowerCase().includes(q));
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="py-16 text-center border border-dashed rounded-2xl">
+                    <p className="text-sm text-muted-foreground mb-4">No gallery albums found.</p>
+                    <Button onClick={openCreateGalleryModal} size="sm">Create First Gallery Album</Button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {filtered.map((album) => {
+                    const count = album.images?.length || 0;
+                    return (
+                      <Card key={album.id} className="border-border/60 glass-card flex flex-col justify-between overflow-hidden hover:border-primary/40 transition-all">
+                        <div className="relative h-44 bg-muted overflow-hidden">
+                          {album.coverImage || (album.images && album.images[0]) ? (
+                            <img src={album.coverImage || album.images[0]} alt={album.title} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                              <ImageIcon className="w-10 h-10" />
+                            </div>
+                          )}
+                          <div className="absolute top-2 right-2 bg-black/70 text-white text-[11px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm flex items-center gap-1">
+                            <ImageIcon className="w-3 h-3" />
+                            {count} Photos
+                          </div>
+                        </div>
+
+                        <CardContent className="p-4 flex-1">
+                          <h3 className="font-display font-bold text-sm text-foreground mb-1">{album.title}</h3>
+                          {album.category && (
+                            <Badge variant="outline" className="text-[10px] uppercase font-semibold text-primary border-primary/30 mb-2">
+                              {album.category}
+                            </Badge>
+                          )}
+                          {album.description && (
+                            <p className="text-xs text-muted-foreground line-clamp-2">{album.description}</p>
+                          )}
+                        </CardContent>
+
+                        <div className="p-3 border-t border-border/40 flex items-center justify-between bg-muted/20">
+                          <Button size="sm" variant="ghost" className="h-8 text-xs text-primary" onClick={() => openEditGalleryModal(album)}>
+                            <Edit2 className="w-3.5 h-3.5 mr-1" /> Edit Photos
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-8 text-xs text-destructive hover:bg-destructive/10" onClick={() => setDeleteConfirmGalleryAlbum(album)}>
+                            <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete Album
+                          </Button>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </AnimatedSection>
+        )}
       </div>
 
       {/* ─── Create / Edit Event Dialog Modal ──────────────────────────── */}
@@ -1541,6 +2037,265 @@ export default function Admin() {
               Cancel
             </Button>
             <Button variant="destructive" size="sm" onClick={handleDeleteEvent}>
+              Delete Permanently
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Create / Edit Team Member Modal ───────────────────────────── */}
+      <Dialog open={teamModalOpen} onOpenChange={setTeamModalOpen}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-lg font-bold">
+              {editingTeamMember ? "Edit Teammate" : "Add New Teammate"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Upload profile photo to Firebase Storage and update member information in Firebase Firestore.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveTeamMember} className="space-y-3 pt-2">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Full Name *</Label>
+              <Input
+                required
+                placeholder="e.g. Rahul Verma"
+                value={teamFormData.name}
+                onChange={(e) => setTeamFormData((p) => ({ ...p, name: e.target.value }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Category *</Label>
+                <select
+                  value={teamFormData.category}
+                  onChange={(e: any) => setTeamFormData((p) => ({ ...p, category: e.target.value }))}
+                  className="w-full h-10 px-3 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="faculty">Faculty Coordinator</option>
+                  <option value="core">Core Leadership</option>
+                  <option value="department">Department Head</option>
+                  <option value="member">Team Member</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Role Title *</Label>
+                <Input
+                  required
+                  placeholder="e.g. President, Head, Executive, Member"
+                  value={teamFormData.role}
+                  onChange={(e) => setTeamFormData((p) => ({ ...p, role: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Department / Team Name (Optional)</Label>
+              <Input
+                placeholder="e.g. Technical, Designing, PublicRelations, Management"
+                value={teamFormData.department}
+                onChange={(e) => setTeamFormData((p) => ({ ...p, department: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Profile Photo Upload (Firebase Storage)</Label>
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setTeamImageFile(e.target.files[0]);
+                  }
+                }}
+                className="text-xs cursor-pointer"
+              />
+              {teamFormData.image && !teamImageFile && (
+                <div className="flex items-center gap-2 mt-1">
+                  <img src={teamFormData.image} alt="Preview" className="w-8 h-8 rounded-full object-cover" />
+                  <span className="text-[11px] text-muted-foreground truncate max-w-[200px]">Current Photo Set</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">LinkedIn Profile URL (Optional)</Label>
+              <Input
+                placeholder="https://linkedin.com/in/..."
+                value={teamFormData.linkedinUrl}
+                onChange={(e) => setTeamFormData((p) => ({ ...p, linkedinUrl: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Bio / Note (Optional)</Label>
+              <textarea
+                rows={2}
+                placeholder="Brief description or message..."
+                value={teamFormData.bio}
+                onChange={(e) => setTeamFormData((p) => ({ ...p, bio: e.target.value }))}
+                className="w-full px-3 py-2 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setTeamModalOpen(false)} disabled={teamSaving} className="text-xs">
+                Cancel
+              </Button>
+              <Button type="submit" disabled={teamSaving || teamUploading} className="font-bold text-xs shadow-md shadow-primary/20">
+                {teamSaving || teamUploading ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
+                {editingTeamMember ? "Update Teammate" : "Save Teammate"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Delete Team Member Modal ──────────────────────────────────── */}
+      <Dialog open={!!deleteConfirmTeamMember} onOpenChange={(open) => !open && setDeleteConfirmTeamMember(null)}>
+        <DialogContent className="max-w-sm text-center">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-destructive">Delete Teammate?</DialogTitle>
+            <DialogDescription className="text-xs">
+              Are you sure you want to remove <strong>{deleteConfirmTeamMember?.name}</strong>? This will delete them from Firebase Firestore and remove their photo from Storage.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex justify-center gap-2 pt-3">
+            <Button variant="outline" size="sm" onClick={() => setDeleteConfirmTeamMember(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleDeleteTeamMember}>
+              Delete Permanently
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Create / Edit Gallery Album Modal ──────────────────────────── */}
+      <Dialog open={galleryModalOpen} onOpenChange={setGalleryModalOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-lg font-bold">
+              {editingGalleryAlbum ? "Edit Gallery Album" : "Create Gallery Album"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Upload event photos to Firebase Storage and update gallery album in Firebase Firestore.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveGalleryAlbum} className="space-y-3 pt-2">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Album Title *</Label>
+              <Input
+                required
+                placeholder="e.g. Ideation '26 Highlights"
+                value={galleryFormData.title}
+                onChange={(e) => setGalleryFormData((p) => ({ ...p, title: e.target.value }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Category</Label>
+                <Input
+                  placeholder="e.g. Competition, Workshop, Hackathon"
+                  value={galleryFormData.category}
+                  onChange={(e) => setGalleryFormData((p) => ({ ...p, category: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Event Date (Optional)</Label>
+                <Input
+                  placeholder="e.g. 15 March 2026"
+                  value={galleryFormData.date}
+                  onChange={(e) => setGalleryFormData((p) => ({ ...p, date: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Upload Photos to Firebase Storage (Multi-Select)</Label>
+              <Input
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    setGalleryFiles(e.target.files);
+                  }
+                }}
+                className="text-xs cursor-pointer"
+              />
+              <p className="text-[10px] text-muted-foreground">Select multiple images to upload directly to Firebase Storage.</p>
+            </div>
+
+            {galleryFormData.images && galleryFormData.images.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <Label className="text-xs font-semibold">Existing Album Photos ({galleryFormData.images.length})</Label>
+                <div className="grid grid-cols-4 gap-2 max-h-36 overflow-y-auto p-2 border rounded-md bg-muted/20">
+                  {galleryFormData.images.map((imgUrl, idx) => (
+                    <div key={idx} className="relative group aspect-square rounded overflow-hidden border border-border">
+                      <img src={imgUrl} alt={`Photo ${idx}`} className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGalleryFormData((prev) => ({
+                            ...prev,
+                            images: prev.images.filter((_, i) => i !== idx),
+                          }));
+                        }}
+                        className="absolute top-1 right-1 bg-destructive text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <XCircle className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Album Description (Optional)</Label>
+              <textarea
+                rows={2}
+                placeholder="Brief summary of the album..."
+                value={galleryFormData.description}
+                onChange={(e) => setGalleryFormData((p) => ({ ...p, description: e.target.value }))}
+                className="w-full px-3 py-2 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setGalleryModalOpen(false)} disabled={gallerySaving} className="text-xs">
+                Cancel
+              </Button>
+              <Button type="submit" disabled={gallerySaving || galleryImagesUploading} className="font-bold text-xs shadow-md shadow-primary/20">
+                {gallerySaving || galleryImagesUploading ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
+                {editingGalleryAlbum ? "Update Gallery Album" : "Save Gallery Album"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Delete Gallery Album Modal ───────────────────────────────── */}
+      <Dialog open={!!deleteConfirmGalleryAlbum} onOpenChange={(open) => !open && setDeleteConfirmGalleryAlbum(null)}>
+        <DialogContent className="max-w-sm text-center">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-destructive">Delete Gallery Album?</DialogTitle>
+            <DialogDescription className="text-xs">
+              Are you sure you want to delete <strong>{deleteConfirmGalleryAlbum?.title}</strong>? This will remove all associated photos from Firebase Storage and Firestore.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex justify-center gap-2 pt-3">
+            <Button variant="outline" size="sm" onClick={() => setDeleteConfirmGalleryAlbum(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleDeleteGalleryAlbum}>
               Delete Permanently
             </Button>
           </DialogFooter>
