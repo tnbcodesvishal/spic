@@ -38,23 +38,40 @@ export function sanitizeForFirestore<T extends Record<string, any>>(obj: T): any
   return obj;
 }
 
-// ─── Sort Events Helper (Featured first, then open/upcoming, then creation date) ───
+export function getEventTimestamp(ev: Event): number {
+  if (ev.createdAt) {
+    const t = new Date(ev.createdAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (ev.updatedAt) {
+    const t = new Date(ev.updatedAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (ev.date) {
+    const cleanStr = ev.date.includes("-") ? ev.date.replace(/-/g, "/") : ev.date;
+    const t = new Date(cleanStr).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  return 0;
+}
+
+// ─── Sort Events Helper (Latest event first, open/upcoming precedence) ───
 export function sortEventsList(events: Event[]): Event[] {
   return [...events].sort((a, b) => {
-    // Featured first
-    if (a.featured && !b.featured) return -1;
-    if (!a.featured && b.featured) return 1;
-
-    // Status precedence: open, upcoming, closed, ended
+    // Status precedence: open (1), upcoming (2), closed (3), ended (4)
     const order: Record<string, number> = { open: 1, upcoming: 2, closed: 3, ended: 4 };
     const orderA = order[a.status] || 5;
     const orderB = order[b.status] || 5;
+
     if (orderA !== orderB) return orderA - orderB;
 
-    // By createdAt descending (newest first)
-    if (a.createdAt && b.createdAt) {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    // Latest event first (newest timestamp / creation time / date descending)
+    const timeA = getEventTimestamp(a);
+    const timeB = getEventTimestamp(b);
+    if (timeA !== timeB) {
+      return timeB - timeA;
     }
+
     return 0;
   });
 }
