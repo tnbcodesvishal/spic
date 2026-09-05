@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, type Registration } from "@/services/api";
+import { saveFirebaseRegistration } from "@/services/firebaseRegistrations";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import type { Event } from "@/data/events";
 
@@ -56,6 +57,19 @@ export default function EventRegistrationForm({ event, onSuccess }: Props) {
         year: values.year,
         branch: values.branch,
       });
+
+      try {
+        await saveFirebaseRegistration({
+          ...result,
+          phone: values.phone || "",
+          rollNumber: values.rollNumber,
+          year: values.year,
+          branch: values.branch,
+        });
+      } catch (fbErr: any) {
+        console.warn("[Registration] Firestore direct write note:", fbErr.message);
+      }
+
       setRegistration(result);
       setStep("success");
       onSuccess?.(result);

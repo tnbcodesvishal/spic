@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, type VerifyResult } from "@/services/api";
+import { updateFirebaseCheckIn } from "@/services/firebaseRegistrations";
 import {
   ScanLine,
   CheckCircle2,
@@ -140,6 +141,11 @@ export default function Scanner({ skipAuth }: { skipAuth?: boolean } = {}) {
       }
 
       const res = await api.verify(parsed);
+      try {
+        await updateFirebaseCheckIn(parsed.registrationId, Boolean(parsed.isTeam), parsed.memberIndex);
+      } catch (fbErr: any) {
+        console.warn("[Scanner] Firestore check-in write note:", fbErr.message);
+      }
       setResult(res);
       playSound("success");
 

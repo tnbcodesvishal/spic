@@ -46,6 +46,10 @@ import {
   deleteFirebaseEvent,
   subscribeToFirebaseEvents,
 } from "@/services/firebaseEvents";
+import {
+  getFirebaseRegistrations,
+  subscribeToFirebaseRegistrations,
+} from "@/services/firebaseRegistrations";
 
 const ADMIN_PIN = "spic@2026";
 const CATEGORIES = ["competition", "hackathon", "workshop", "talk", "seminar", "visit"] as const;
@@ -69,7 +73,6 @@ export default function Admin() {
   });
   const [authError, setAuthError] = useState("");
   const [activeTab, setActiveTab] = useState<"events" | "registrations" | "scanner">("events");
-
 
   // Events state
   const [events, setEvents] = useState<Event[]>([]);
@@ -151,8 +154,13 @@ export default function Admin() {
   const fetchRegistrations = async () => {
     setRegsLoading(true);
     try {
-      const data = await api.getAdminRegistrations(currentPin);
-      setRegistrations(data);
+      const fbRegs = await getFirebaseRegistrations();
+      if (fbRegs.all && fbRegs.all.length > 0) {
+        setRegistrations(fbRegs.all);
+      } else {
+        const data = await api.getAdminRegistrations(currentPin);
+        setRegistrations(data);
+      }
       const st = await api.getAdminStats(currentPin);
       setStats(st);
     } catch (err: any) {
@@ -167,15 +175,23 @@ export default function Admin() {
       fetchEvents();
       fetchRegistrations();
 
-      // Listen for real-time Firebase Firestore updates
-      const unsubscribe = subscribeToFirebaseEvents((realtimeEvents) => {
+      // Listen for real-time Firebase Firestore event updates
+      const unsubEvents = subscribeToFirebaseEvents((realtimeEvents) => {
         if (realtimeEvents && realtimeEvents.length > 0) {
           setEvents(realtimeEvents);
         }
       });
 
+      // Listen for real-time Firebase Firestore registration updates
+      const unsubRegs = subscribeToFirebaseRegistrations((realtimeRegs) => {
+        if (realtimeRegs.all && realtimeRegs.all.length > 0) {
+          setRegistrations(realtimeRegs.all);
+        }
+      });
+
       return () => {
-        unsubscribe();
+        unsubEvents();
+        unsubRegs();
       };
     }
   }, [authenticated]);

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/services/api";
+import { saveFirebaseTeamRegistration } from "@/services/firebaseRegistrations";
 import { CheckCircle2, Loader2, UploadCloud, File, X, ChevronRight, ChevronLeft, Users } from "lucide-react";
 import type { Event } from "@/data/events";
 
@@ -251,6 +252,24 @@ export default function TeamRegistrationForm({ event, onSuccess }: Props) {
         members: validMembers as any,
         pptLink,
       });
+
+      try {
+        await saveFirebaseTeamRegistration({
+          id: result.id,
+          eventId: event.id,
+          eventName: event.name,
+          eventDate: event.date,
+          eventVenue: event.venue,
+          teamName: values.teamName.trim(),
+          leadEmail: validMembers[0]?.email?.trim()?.toLowerCase(),
+          members: validMembers,
+          pptLink,
+          createdAt: new Date().toISOString(),
+          isTeam: true,
+        });
+      } catch (fbErr: any) {
+        console.warn("[TeamRegistration] Firestore direct write note:", fbErr.message);
+      }
 
       setRegistration(result);
       setStep("success");
