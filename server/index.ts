@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import registrationRouter from "./routes/registration";
 import verificationRouter from "./routes/verification";
@@ -47,12 +48,20 @@ app.use("/uploads", express.static(uploadsPath));
 // ─── Frontend Static Files (Production) ──────────────────────────────
 // This allows a single Render server to host both the API and the React App
 const distPath = path.resolve(__dirname, "../dist");
-app.use(express.static(distPath));
+const indexHtmlPath = path.resolve(distPath, "index.html");
+
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+}
 
 // Catch-all route to serve index.html for React Router
 app.use((req, res, next) => {
   if (req.method === "GET") {
-    res.sendFile(path.resolve(distPath, "index.html"));
+    if (fs.existsSync(indexHtmlPath)) {
+      res.sendFile(indexHtmlPath);
+    } else {
+      res.status(200).send("SPIC Innovation API Service is running.");
+    }
   } else {
     next();
   }

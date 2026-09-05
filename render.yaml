@@ -4,9 +4,11 @@ services:
     env: node
     region: singapore
     plan: free
-    buildCommand: npm install --include=dev
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm run start
     envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
       - key: GMAIL_USER
         value: mr.vishalsingh987@gmail.com
       - key: GMAIL_PASS
@@ -15,3 +17,4 @@ services:
         value: 1m7NagzbSuyU4qsOX7ul43ETPiUOyAkkzb_aKGYc3xd4
       - key: GOOGLE_SHEET_WEBHOOK_URL
         value: https://script.google.com/macros/s/AKfycbxvOswFrS4wNLjRdlYaCAQ-2btQcXH8dQLBa6gPGD0nqHJmlNawsDNFrk2cDrzfy2nk0A/exec
+
